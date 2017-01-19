@@ -157,7 +157,6 @@ void skiplist_insert(SkiplistRaw *slist,
     SkiplistNode* prevs[SKIPLIST_MAX_LAYER];
     SkiplistNode* nexts[SKIPLIST_MAX_LAYER];
 
-
 insert_retry:
     int cmp = 0;
     int cur_layer = 0;
@@ -169,12 +168,12 @@ insert_retry:
             SkiplistNode *next_node = _sl_next(slist, cur_node, cur_layer);
             cmp = _sl_cmp(slist, node, next_node);
             if (cmp > 0) {
-                // cur_node->next < node
+                // next_node < node
                 // => move to next node
                 cur_node = next_node;
                 continue;
             }
-            // node <= cur_node->next
+            // otherwise: node <= next_node
 
             if (cur_layer <= top_layer) {
                 prevs[cur_layer] = cur_node;
@@ -255,10 +254,9 @@ SkiplistNode* skiplist_find(SkiplistRaw *slist,
     int cur_layer = 0;
     SkiplistNode *cur_node = &slist->head;
 
-    for (cur_layer = slist->maxLayer-1 ; cur_layer >= 0; --cur_layer) {
+    for (cur_layer = slist->maxLayer-1; cur_layer >= 0; --cur_layer) {
         do {
             SkiplistNode *next_node = _sl_next(slist, cur_node, cur_layer);
-
             cmp = _sl_cmp(slist, query, next_node);
             if (cmp > 0) {
                 // next_node < query
@@ -292,10 +290,9 @@ SkiplistNode* skiplist_find_smaller(SkiplistRaw *slist,
     int cur_layer = 0;
     SkiplistNode *cur_node = &slist->head;
 
-    for (cur_layer = slist->maxLayer-1 ; cur_layer >= 0; --cur_layer) {
+    for (cur_layer = slist->maxLayer-1; cur_layer >= 0; --cur_layer) {
         do {
             SkiplistNode *next_node = _sl_next(slist, cur_node, cur_layer);
-
             cmp = _sl_cmp(slist, query, next_node);
             if (cmp > 0) {
                 // next_node < query
@@ -454,7 +451,7 @@ SkiplistNode* skiplist_next(SkiplistRaw *slist,
     if (next == &slist->tail) {
         return nullptr;
     }
-    return  next;
+    return next;
 }
 
 SkiplistNode* skiplist_prev(SkiplistRaw *slist,
@@ -463,7 +460,7 @@ SkiplistNode* skiplist_prev(SkiplistRaw *slist,
     if (prev == &slist->head) {
         return nullptr;
     }
-    return  prev;
+    return prev;
 }
 
 SkiplistNode* skiplist_begin(SkiplistRaw *slist) {
