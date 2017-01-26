@@ -78,6 +78,23 @@ void skiplist_init(SkiplistRaw *slist,
     slist->cmpFunc = cmp_func;
 }
 
+void skiplist_set_config(SkiplistRaw *slist,
+                         SkiplistRawConfig config)
+{
+    slist->fanout = config.fanout;
+    slist->maxLayer = config.maxLayer;
+    slist->aux = config.aux;
+}
+
+SkiplistRawConfig skiplist_get_config(SkiplistRaw *slist)
+{
+    SkiplistRawConfig ret;
+    ret.fanout = slist->fanout;
+    ret.maxLayer = slist->maxLayer;
+    ret.aux = slist->aux;
+    return ret;
+}
+
 static inline int _sl_cmp(SkiplistRaw *slist,
                           SkiplistNode *a,
                           SkiplistNode *b)

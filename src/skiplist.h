@@ -58,6 +58,18 @@ struct SkiplistNode {
 // *a  > *b : return pos
 typedef int skiplist_cmp_t(SkiplistNode *a, SkiplistNode *b, void *aux);
 
+struct SkiplistRawConfig {
+    SkiplistRawConfig() :
+        fanout(4),
+        maxLayer(12),
+        aux(nullptr)
+        { }
+
+    size_t fanout;
+    size_t maxLayer;
+    void *aux;
+};
+
 struct SkiplistRaw {
     // fanout 4 + layer 12: 4^12 ~= upto 17M items under O(lg n) complexity.
     // for +17M items, complexity will grow linearly: O(k lg n).
@@ -84,6 +96,11 @@ struct SkiplistRaw {
 
 void skiplist_init(SkiplistRaw *slist,
                    skiplist_cmp_t *cmp_func);
+
+void skiplist_set_config(SkiplistRaw *slist,
+                         SkiplistRawConfig config);
+
+SkiplistRawConfig skiplist_get_config(SkiplistRaw *slist);
 
 void skiplist_insert(SkiplistRaw *slist,
                      SkiplistNode *node);
