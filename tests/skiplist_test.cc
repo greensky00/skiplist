@@ -30,6 +30,8 @@
 #include <chrono>
 #include <ctime>
 #include <thread>
+#include <set>
+#include <mutex>
 
 #include <assert.h>
 
@@ -201,70 +203,156 @@ void find_test()
            elapsed_seconds.count(), n/elapsed_seconds.count());
 }
 
-struct writer_T1_args {
+struct thread_args {
     SkiplistRaw* list;
+    std::set<int>* stl_set;
+    std::mutex *lock;
+    bool use_skiplist;
     std::vector<int>* key;
     std::vector<IntNode>* arr;
     int range_begin;
     int range_end;
-    int id;
-    int n_keys;
+    std::chrono::duration<double> elapsed_seconds;
 };
 
-void* writer_T1(void *voidargs)
+struct test_args {
+    int n_keys;
+    int n_writers;
+    int n_erasers;
+    int n_readers;
+    bool random_order;
+    bool use_skiplist;
+};
+
+void* writer_thread(void *voidargs)
 {
-    writer_T1_args *args = (writer_T1_args*)voidargs;
+    thread_args *args = (thread_args*)voidargs;
+
+    std::chrono::time_point<std::chrono::system_clock> start, end;
+    start = std::chrono::system_clock::now();
+
     int i;
     for (i=args->range_begin; i<=args->range_end; ++i) {
         IntNode& node = args->arr->at(i);
-        skiplist_insert(args->list, &node.snode);
+        if (args->use_skiplist) {
+            skiplist_insert(args->list, &node.snode);
+        } else {
+            args->lock->lock();
+            args->stl_set->insert(node.value);
+            args->lock->unlock();
+        }
     }
+
+    end = std::chrono::system_clock::now();
+    args->elapsed_seconds = end - start;
 
     return NULL;
 }
 
-void concurrent_write_test()
+void* eraser_thread(void *voidargs)
+{
+    thread_args *args = (thread_args*)voidargs;
+
+    std::chrono::time_point<std::chrono::system_clock> start, end;
+    start = std::chrono::system_clock::now();
+
+    int i;
+    for (i=args->range_begin; i<=args->range_end; ++i) {
+        IntNode query;
+        if (args->use_skiplist) {
+            query.value = args->key->at(i);
+            int ret = skiplist_erase(args->list, &query.snode);
+            (void)ret;
+        } else {
+            args->lock->lock();
+            args->stl_set->erase(args->key->at(i));
+            args->lock->unlock();
+        }
+    }
+
+    end = std::chrono::system_clock::now();
+    args->elapsed_seconds = end - start;
+
+    return NULL;
+}
+
+void* reader_thread(void *voidargs)
+{
+    thread_args *args = (thread_args*)voidargs;
+
+    std::chrono::time_point<std::chrono::system_clock> start, end;
+    start = std::chrono::system_clock::now();
+
+    int i;
+    for (i=args->range_begin; i<=args->range_end; ++i) {
+        IntNode query;
+        if (args->use_skiplist) {
+            query.value = args->key->at(i);
+            SkiplistNode *ret = skiplist_find(args->list, &query.snode);
+            (void)ret;
+        } else {
+            args->lock->lock();
+            auto ret = args->stl_set->find(args->key->at(i));
+            (void)ret;
+            args->lock->unlock();
+        }
+    }
+
+    end = std::chrono::system_clock::now();
+    args->elapsed_seconds = end - start;
+
+    return NULL;
+}
+
+void concurrent_write_test(struct test_args t_args)
 {
     SkiplistRaw list;
+    std::mutex lock;
+    std::set<int> stl_set;
+
     skiplist_init(&list, _cmp_IntNode);
 
     int i, j, temp;
-    int n = 1000000;
+    int n = t_args.n_keys;
     std::vector<int> key(n);
     std::vector<IntNode> arr(n);
     // assign
     for (i=0; i<n; ++i) {
         key[i] = i;
     }
+
     // shuffle
-    srand(0x1111);
-    for (i=0; i<n; ++i) {
-        j = rand() % n;
-        temp = key[i];
-        key[i] = key[j];
-        key[j] = temp;
+    if (t_args.random_order) {
+        srand(0x1111);
+        for (i=0; i<n; ++i) {
+            j = rand() % n;
+            temp = key[i];
+            key[i] = key[j];
+            key[j] = temp;
+        }
     }
 
     for (i=0; i<n; ++i) {
         arr[i].value = key[i];
     }
 
-    int n_threads = 8;
+    int n_threads = t_args.n_writers;
     int n_keys_per_thread = n / n_threads;
 
     std::vector<std::thread> t_hdl(n_threads);
-    std::vector<writer_T1_args> args(n_threads);
+    std::vector<thread_args> args(n_threads);
 
     for (i=0; i<n_threads; ++i) {
         args[i].list = &list;
+        args[i].stl_set = &stl_set;
+        args[i].lock = &lock;
         args[i].key = &key;
         args[i].arr = &arr;
         args[i].range_begin = i*n_keys_per_thread;
         args[i].range_end = (i+1)*n_keys_per_thread - 1;
-        args[i].id = i;
-        args[i].n_keys = n;
+        args[i].use_skiplist = t_args.use_skiplist;
 
-        t_hdl[i] = std::thread(writer_T1, &args[i]);
+        t_hdl[i] = std::thread(writer_thread, &args[i]);
     }
 
     std::chrono::time_point<std::chrono::system_clock> start, end;
@@ -276,12 +364,16 @@ void concurrent_write_test()
     }
 
     end = std::chrono::system_clock::now();
-    elapsed_seconds = end-start;
+    elapsed_seconds = end - start;
 
-    printf("insert %.4f (%.1f ops/sec)\n",
-           elapsed_seconds.count(), n/elapsed_seconds.count());
+    printf("insert %.4f (%d threads, %.1f ops/sec)\n",
+           elapsed_seconds.count(), n_threads, n/elapsed_seconds.count());
 
-    // forward iteration
+    if (!t_args.use_skiplist) {
+        return;
+    }
+
+    // integrity check (forward iteration, skiplist only)
     start = std::chrono::system_clock::now();
 
     int count = 0;
@@ -310,38 +402,32 @@ void concurrent_write_test()
     assert(!corruption);
 
     end = std::chrono::system_clock::now();
-    elapsed_seconds = end-start;
+    elapsed_seconds = end - start;
 
     printf("iteration %.4f (%.1f ops/sec)\n",
            elapsed_seconds.count(), n/elapsed_seconds.count());
 }
 
-void* eraser_T2(void *voidargs)
-{
-    writer_T1_args *args = (writer_T1_args*)voidargs;
-    int i;
-    for (i=args->range_begin; i<=args->range_end; ++i) {
-        IntNode query;
-        query.value = args->key->at(i);
-        int ret = skiplist_erase(args->list, &query.snode);
-        (void)ret;
-    }
-
-    return NULL;
-}
-
-void concurrent_write_erase_test()
+void concurrent_write_erase_test(struct test_args t_args)
 {
     SkiplistRaw list;
+    std::mutex lock;
+    std::set<int> stl_set;
+
     skiplist_init(&list, _cmp_IntNode);
 
     int i, j, temp;
-    int n = 1000000;
+    int n = t_args.n_keys;
     std::vector<int> key_add(n);
     std::vector<int> key_del(n);
     std::vector<IntNode> arr_add(n);
     std::vector<IntNode> arr_del(n);
     std::vector<IntNode*> arr_add_dbgref(n);
+
+    // initial list state: 0, 10, 20, ...
+    //  => writer threads: adding 5, 15, 25, ...
+    //  => eraser threads: erasing 0, 10, 20, ...
+    // final list state: 5, 15, 25, ...
 
     // initial insert
     for (i=0; i<n; ++i) {
@@ -358,13 +444,15 @@ void concurrent_write_erase_test()
         key_add[i] = i*10 + 5;
     }
 
-    // shuffle keys to add
-    srand(0x1111);
-    for (i=0; i<n; ++i) {
-        j = rand() % n;
-        temp = key_add[i];
-        key_add[i] = key_add[j];
-        key_add[j] = temp;
+    if (t_args.random_order) {
+        // shuffle keys to add
+        srand(0x1111);
+        for (i=0; i<n; ++i) {
+            j = rand() % n;
+            temp = key_add[i];
+            key_add[i] = key_add[j];
+            key_add[j] = temp;
+        }
     }
     for (i=0; i<n; ++i) {
         int ori_idx = (key_add[i] - 5) / 10;
@@ -372,53 +460,54 @@ void concurrent_write_erase_test()
         arr_add_dbgref[ori_idx] = &arr_add[i];
     }
 
-    // also shuffle keys to delete
-    for (i=0; i<n; ++i) {
-        j = rand() % n;
-        temp = key_del[i];
-        key_del[i] = key_del[j];
-        key_del[j] = temp;
+    if (t_args.random_order) {
+        // also shuffle keys to delete
+        for (i=0; i<n; ++i) {
+            j = rand() % n;
+            temp = key_del[i];
+            key_del[i] = key_del[j];
+            key_del[j] = temp;
+        }
     }
 
-    int n_threads_add = 4;
-    int n_threads_del = 4;
+    int n_threads_add = t_args.n_writers;
+    int n_threads_del = t_args.n_erasers;
 
     int n_keys_per_thread_add = n / n_threads_add;
     int n_keys_per_thread_del = n / n_threads_del;
 
     std::vector<std::thread> t_hdl_add(n_threads_add);
-    std::vector<writer_T1_args> args_add(n_threads_add);
+    std::vector<thread_args> args_add(n_threads_add);
 
     for (i=0; i<n_threads_add; ++i) {
         args_add[i].list = &list;
+        args_add[i].stl_set = &stl_set;
+        args_add[i].lock = &lock;
         args_add[i].key = &key_add;
         args_add[i].arr = &arr_add;
         args_add[i].range_begin = i*n_keys_per_thread_add;
         args_add[i].range_end = (i+1)*n_keys_per_thread_add - 1;
-        args_add[i].id = i;
-        args_add[i].n_keys = n;
+        args_add[i].use_skiplist = t_args.use_skiplist;
 
-        t_hdl_add[i] = std::thread(writer_T1, &args_add[i]);
+        t_hdl_add[i] = std::thread(writer_thread, &args_add[i]);
     }
 
     std::vector<std::thread> t_hdl_del(n_threads_del);
-    std::vector<writer_T1_args> args_del(n_threads_del);
+    std::vector<thread_args> args_del(n_threads_del);
 
     for (i=0; i<n_threads_del; ++i) {
         args_del[i].list = &list;
+        args_del[i].stl_set = &stl_set;
+        args_del[i].lock = &lock;
         args_del[i].key = &key_del;
         args_del[i].arr = &arr_del;
         args_del[i].range_begin = i*n_keys_per_thread_del;
         args_del[i].range_end = (i+1)*n_keys_per_thread_del - 1;
-        args_del[i].id = i;
-        args_del[i].n_keys = n;
+        args_del[i].use_skiplist = t_args.use_skiplist;
 
-        t_hdl_del[i] = std::thread(eraser_T2, &args_del[i]);
+        t_hdl_del[i] = std::thread(eraser_thread, &args_del[i]);
     }
 
-    std::chrono::time_point<std::chrono::system_clock> start, end;
-    std::chrono::duration<double> elapsed_seconds;
-    start = std::chrono::system_clock::now();
 
     for (i=0; i<n_threads_add; ++i){
         t_hdl_add[i].join();
@@ -427,13 +516,43 @@ void concurrent_write_erase_test()
         t_hdl_del[i].join();
     }
 
-    end = std::chrono::system_clock::now();
-    elapsed_seconds = end-start;
+    double max_seconds_add = 0;
+    double max_seconds_del = 0;
 
-    printf("mutation total %.4f (%.1f ops/sec)\n",
-           elapsed_seconds.count(), (n*2)/elapsed_seconds.count());
+    for (i=0; i<n_threads_add; ++i) {
+        if (args_add[i].elapsed_seconds.count() > max_seconds_add) {
+            max_seconds_add = args_add[i].elapsed_seconds.count();
+        }
+    }
 
-    // forward iteration
+    for (i=0; i<n_threads_del; ++i) {
+        if (args_del[i].elapsed_seconds.count() > max_seconds_del) {
+            max_seconds_del = args_del[i].elapsed_seconds.count();
+        }
+    }
+
+    printf("insertion %.4f (%d threads, %.1f ops/sec)\n",
+           max_seconds_add,
+           n_threads_add,
+           n / max_seconds_add);
+
+    printf("deletion %.4f (%d threads, %.1f ops/sec)\n",
+           max_seconds_del,
+           n_threads_del,
+           n / max_seconds_del);
+
+    printf("mutation total %.4f (%d threads, %.1f ops/sec)\n",
+           std::max(max_seconds_add, max_seconds_del),
+           n_threads_add + n_threads_del,
+           (n*2) / std::max(max_seconds_add, max_seconds_del));
+
+    if (!t_args.use_skiplist) {
+        return;
+    }
+
+    // integrity check (forward iteration, skiplist only)
+    std::chrono::time_point<std::chrono::system_clock> start, end;
+    std::chrono::duration<double> elapsed_seconds;
     start = std::chrono::system_clock::now();
 
     int count = 0;
@@ -474,12 +593,163 @@ void concurrent_write_erase_test()
            elapsed_seconds.count(), n/elapsed_seconds.count());
 }
 
+void concurrent_write_read_test(struct test_args t_args)
+{
+    SkiplistRaw list;
+    std::mutex lock;
+    std::set<int> stl_set;
+
+    skiplist_init(&list, _cmp_IntNode);
+
+    int i, j, temp;
+    int n = t_args.n_keys;
+    std::vector<int> key_add(n);
+    std::vector<int> key_read(n);
+    std::vector<IntNode> arr_add(n);
+    std::vector<IntNode> arr_find(n);
+    std::vector<IntNode*> arr_add_dbgref(n);
+
+    // initial list state: 0, 10, 20, ...
+    //  => writer threads: adding 5, 15, 25, ...
+    //  => reader threads: reading 0, 10, 20, ...
+    // final list state: 0, 5, 10, 15, 20, ...
+
+    // initial insert
+    for (i=0; i<n; ++i) {
+        // 0, 10, 20, 30 ...
+        key_read[i] = i * 10;
+        arr_find[i].value = key_read[i];
+        skiplist_insert(&list, &arr_find[i].snode);
+    }
+    printf("initial load done\n");
+
+    // assign keys to add
+    for (i=0; i<n; ++i) {
+        // 5, 15, 25, 35, ...
+        key_add[i] = i*10 + 5;
+    }
+
+    if (t_args.random_order) {
+        // shuffle keys to add
+        srand(0x1111);
+        for (i=0; i<n; ++i) {
+            j = rand() % n;
+            temp = key_add[i];
+            key_add[i] = key_add[j];
+            key_add[j] = temp;
+        }
+    }
+    for (i=0; i<n; ++i) {
+        int ori_idx = (key_add[i] - 5) / 10;
+        arr_add[i].value = key_add[i];
+        arr_add_dbgref[ori_idx] = &arr_add[i];
+    }
+
+    if (t_args.random_order) {
+        // also shuffle keys to find
+        for (i=0; i<n; ++i) {
+            j = rand() % n;
+            temp = key_read[i];
+            key_read[i] = key_read[j];
+            key_read[j] = temp;
+        }
+    }
+
+    int n_threads_add = t_args.n_writers;
+    int n_threads_find = t_args.n_readers;
+
+    std::vector<std::thread> t_hdl_add(n_threads_add);
+    std::vector<std::thread> t_hdl_find(n_threads_find);
+    std::vector<thread_args> args_add(n_threads_add);
+    std::vector<thread_args> args_find(n_threads_find);
+
+    if (n_threads_add) {
+        int n_keys_per_thread_add = n / n_threads_add;
+
+        for (i=0; i<n_threads_add; ++i) {
+            args_add[i].list = &list;
+            args_add[i].stl_set = &stl_set;
+            args_add[i].lock = &lock;
+            args_add[i].key = &key_add;
+            args_add[i].arr = &arr_add;
+            args_add[i].range_begin = i*n_keys_per_thread_add;
+            args_add[i].range_end = (i+1)*n_keys_per_thread_add - 1;
+            args_add[i].use_skiplist = t_args.use_skiplist;
+
+            t_hdl_add[i] = std::thread(writer_thread, &args_add[i]);
+        }
+    }
+
+    if (n_threads_find) {
+        int n_keys_per_thread_find = n / n_threads_find;
+
+        for (i=0; i<n_threads_find; ++i) {
+            args_find[i].list = &list;
+            args_find[i].stl_set = &stl_set;
+            args_find[i].lock = &lock;
+            args_find[i].key = &key_read;
+            args_find[i].arr = &arr_find;
+            args_find[i].range_begin = i*n_keys_per_thread_find;
+            args_find[i].range_end = (i+1)*n_keys_per_thread_find - 1;
+            args_find[i].use_skiplist = t_args.use_skiplist;
+
+            t_hdl_find[i] = std::thread(reader_thread, &args_find[i]);
+        }
+    }
+
+    for (i=0; i<n_threads_add; ++i){
+        t_hdl_add[i].join();
+    }
+    for (i=0; i<n_threads_find; ++i){
+        t_hdl_find[i].join();
+    }
+
+    if (n_threads_add) {
+        double max_seconds_add = 0;
+        for (i=0; i<n_threads_add; ++i) {
+            if (args_add[i].elapsed_seconds.count() > max_seconds_add) {
+                max_seconds_add = args_add[i].elapsed_seconds.count();
+            }
+        }
+        printf("insertion %.4f (%d threads, %.1f ops/sec)\n",
+               max_seconds_add,
+               n_threads_add,
+               n / max_seconds_add);
+    }
+
+    if (n_threads_find) {
+        double max_seconds_find = 0;
+        for (i=0; i<n_threads_find; ++i) {
+            if (args_find[i].elapsed_seconds.count() > max_seconds_find) {
+                max_seconds_find = args_find[i].elapsed_seconds.count();
+            }
+        }
+        printf("retrieval %.4f (%d threads, %.1f ops/sec)\n",
+               max_seconds_find,
+               n_threads_find,
+               n / max_seconds_find);
+    }
+}
 
 int main() {
+    struct test_args args;
+    args.n_keys = 1000000;
+    args.random_order = true;
+    args.use_skiplist = true;
+
     basic_insert_and_erase();
     find_test();
-    concurrent_write_test();
-    concurrent_write_erase_test();
+
+    args.n_writers = 8;
+    concurrent_write_test(args);
+
+    args.n_writers = 4;
+    args.n_erasers = 4;
+    concurrent_write_erase_test(args);
+
+    args.n_writers = 1;
+    args.n_readers = 7;
+    concurrent_write_read_test(args);
 
     return 0;
 }
