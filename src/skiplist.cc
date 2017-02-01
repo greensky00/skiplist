@@ -40,6 +40,8 @@
     #define __SLD_ASSERT(cond)
 #endif
 
+#define MOR std::memory_order_relaxed
+
 static inline void _sl_node_init(SkiplistNode *node,
                                  size_t top_layer)
 {
@@ -114,16 +116,16 @@ static inline int _sl_cmp(SkiplistRaw *slist,
 }
 
 static inline bool _sl_valid_node(SkiplistNode *node) {
-    return !node->removed && node->isFullyLinked;
+    return !node->removed.load(MOR) && node->isFullyLinked.load(MOR);
 }
 
 static inline SkiplistNode* _sl_next(SkiplistRaw *slist,
                                      SkiplistNode *cur_node,
                                      int layer)
 {
-    SkiplistNode *next_node = cur_node->next[layer];
+    SkiplistNode *next_node = cur_node->next[layer].load(MOR);
     while ( next_node && !_sl_valid_node(next_node) ) {
-        next_node = next_node->next[layer];
+        next_node = next_node->next[layer].load(MOR);
     }
     return next_node;
 }
@@ -152,8 +154,8 @@ static inline void _sl_clr_flags(SkiplistNode** node_arr,
     for (layer = start_layer; layer <= top_layer; ++layer) {
         if ( layer == top_layer ||
              node_arr[layer] != node_arr[layer+1] ) {
-            __SLD_ASSERT(node_arr[layer]->beingModified == true);
-            node_arr[layer]->beingModified = false;
+            __SLD_ASSERT(node_arr[layer]->beingModified.load(MOR) == true);
+            node_arr[layer]->beingModified.store(false, MOR);
         }
     }
 }
@@ -212,7 +214,7 @@ insert_retry:
                 } else {
                     bool expected = false;
                     if (prevs[cur_layer]->beingModified.
-                            compare_exchange_strong(expected, true)) {
+                            compare_exchange_weak(expected, true)) {
                         locked_layer = cur_layer;
                     } else {
                         error_code = -1;
@@ -231,7 +233,7 @@ insert_retry:
                 }
 
                 // set current node's pointers
-                node->next[cur_layer] = nexts[cur_layer];
+                node->next[cur_layer].store(nexts[cur_layer], MOR);
 
                 if (_sl_next(slist, cur_node, cur_layer) != next_node) {
                     __SLD_NC_INS(cur_node, next_node, top_layer, cur_layer);
@@ -250,11 +252,11 @@ insert_retry:
             // bottom layer => insertion succeeded
             // change prev/next nodes' prev/next pointers from 0 ~ top_layer
             for (layer = 0; layer <= top_layer; ++layer) {
-                prevs[layer]->next[layer] = node;
+                prevs[layer]->next[layer].store(node, MOR);
             }
 
             // now this node is fully linked
-            node->isFullyLinked = true;
+            node->isFullyLinked.store(true, MOR);
 
             // modification is done for all layers
             _sl_clr_flags(prevs, 0, top_layer);
@@ -338,7 +340,7 @@ int skiplist_erase_node(SkiplistRaw *slist,
 {
     int top_layer = node->topLayer;
 
-    if (node->removed) {
+    if (node->removed.load(MOR)) {
         // already removed
         return -1;
     }
@@ -347,17 +349,17 @@ int skiplist_erase_node(SkiplistRaw *slist,
     SkiplistNode* nexts[SKIPLIST_MAX_LAYER];
 
     bool expected = false;
-    if (!node->beingModified.compare_exchange_strong(expected, true)) {
+    if (!node->beingModified.compare_exchange_weak(expected, true)) {
         // already being modified .. fail
         __SLD_BM(node);
         return -2;
     }
 
     // clear removed flag first, so that reader cannot read this node.
-    node->removed = true;
+    node->removed.store(true, MOR);
 
 erase_node_retry:
-    if (!node->isFullyLinked) {
+    if (!node->isFullyLinked.load(MOR)) {
         // already unlinked .. remove is done by other thread
         return -3;
     }
@@ -397,7 +399,7 @@ erase_node_retry:
                 } else {
                     expected = false;
                     if (prevs[cur_layer]->beingModified.
-                            compare_exchange_strong(expected, true)) {
+                            compare_exchange_weak(expected, true)) {
                         locked_layer = cur_layer;
                     } else {
                         error_code = -1;
@@ -431,16 +433,16 @@ erase_node_retry:
     // bottom layer => removal succeeded.
     // change prev nodes' next pointer from 0 ~ top_layer
     for (cur_layer = 0; cur_layer <= top_layer; ++cur_layer) {
-        prevs[cur_layer]->next[cur_layer] = nexts[cur_layer];
+        prevs[cur_layer]->next[cur_layer].store(nexts[cur_layer], MOR);
     }
 
     // now this node is unlinked
-    node->isFullyLinked = false;
+    node->isFullyLinked.store(false, MOR);
 
     // modification is done for all layers
     _sl_clr_flags(prevs, 0, top_layer);
 
-    node->beingModified = false;
+    node->beingModified.store(false, MOR);
     return 0;
 }
 
