@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2017 Jung-Sang Ahn <jungsang.ahn@gmail.com>
+ * Copyright (C) 2017-present Jung-Sang Ahn <jungsang.ahn@gmail.com>
  * All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person
