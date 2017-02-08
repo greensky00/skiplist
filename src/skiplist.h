@@ -24,16 +24,27 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
+#ifndef _JSAHN_SKIPLIST_H
+#define _JSAHN_SKIPLIST_H 1
 
 #include <stddef.h>
 #include <stdint.h>
 
-#include <atomic>
+struct SkiplistNode;
+
+#define STL_ATOMIC 1
+#ifdef STL_ATOMIC
+    #include <atomic>
+    typedef std::atomic<SkiplistNode*> atm_node_ptr;
+    typedef std::atomic<bool> atm_bool;
+#else
+    typedef SkiplistNode* atm_node_ptr;
+    typedef bool atm_bool;
+#endif
 
 struct SkiplistNode {
     SkiplistNode() :
-        next(nullptr),
+        next(NULL),
         isFullyLinked(false),
         beingModified(false),
         removed(false),
@@ -44,10 +55,10 @@ struct SkiplistNode {
         delete[] next;
     }
 
-    std::atomic<SkiplistNode*>* next;
-    std::atomic<bool> isFullyLinked;
-    std::atomic<bool> beingModified;
-    std::atomic<bool> removed;
+    atm_node_ptr *next;
+    atm_bool isFullyLinked;
+    atm_bool beingModified;
+    atm_bool removed;
     uint8_t topLayer; // 0: bottom
 };
 
@@ -62,7 +73,7 @@ struct SkiplistRawConfig {
     SkiplistRawConfig() :
         fanout(4),
         maxLayer(12),
-        aux(nullptr)
+        aux(NULL)
         { }
 
     size_t fanout;
@@ -74,8 +85,8 @@ struct SkiplistRaw {
     // fanout 4 + layer 12: 4^12 ~= upto 17M items under O(lg n) complexity.
     // for +17M items, complexity will grow linearly: O(k lg n).
     SkiplistRaw() :
-        cmpFunc(nullptr),
-        aux(nullptr),
+        cmpFunc(NULL),
+        aux(NULL),
         fanout(4),
         maxLayer(12)
         { }
@@ -126,4 +137,6 @@ SkiplistNode* skiplist_prev(SkiplistRaw *slist,
 SkiplistNode* skiplist_begin(SkiplistRaw *slist);
 
 SkiplistNode* skiplist_end(SkiplistRaw *slist);
+
+#endif  // _JSAHN_SKIPLIST_H
 

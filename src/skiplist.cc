@@ -40,7 +40,20 @@
     #define __SLD_ASSERT(cond)
 #endif
 
-#define MOR std::memory_order_relaxed
+#ifdef STL_ATOMIC
+    // C++ (STL) atomic operations
+    #define MOR std::memory_order_relaxed
+    #define ATM_LOAD(var, val) val = (var).load(MOR)
+    #define ATM_STORE(var, val) (var).store(val, MOR)
+    #define ATM_CAS(var, exp, val) (var).compare_exchange_weak(exp, val)
+#else
+    // C-style atomic operations
+    #define MOR __ATOMIC_RELAXED
+    #define ATM_LOAD(var, val) __atomic_load(&var, &val, MOR)
+    #define ATM_STORE(var, val) __atomic_store(&var, &val, MOR)
+    #define ATM_CAS(var, exp, val) \
+        __atomic_compare_exchange(&var, &exp, &val, 1, MOR, MOR)
+#endif
 
 static inline void _sl_node_init(SkiplistNode *node,
                                  size_t top_layer)
@@ -49,19 +62,20 @@ static inline void _sl_node_init(SkiplistNode *node,
         top_layer = UINT8_MAX;
     }
 
-    node->isFullyLinked = false;
-    node->beingModified = false;
-    node->removed = false;
+    bool bool_val = false;
+    ATM_STORE(node->isFullyLinked, bool_val);
+    ATM_STORE(node->beingModified, bool_val);
+    ATM_STORE(node->removed, bool_val);
 
     if (node->topLayer != top_layer ||
-        node->next == nullptr) {
+        node->next == NULL) {
 
         node->topLayer = top_layer;
 
         if (node->next) {
             delete[] node->next;
         }
-        node->next = new std::atomic<SkiplistNode*>[top_layer+1];
+        node->next = new atm_node_ptr[top_layer+1];
     }
 }
 
@@ -73,10 +87,12 @@ void skiplist_init(SkiplistRaw *slist,
     size_t layer;
     for (layer = 0; layer < slist->maxLayer; ++layer) {
         slist->head.next[layer] = &slist->tail;
-        slist->tail.next[layer] = nullptr;
+        slist->tail.next[layer] = NULL;
     }
 
-    slist->head.isFullyLinked = slist->tail.isFullyLinked = true;
+    bool bool_val = true;
+    ATM_STORE(slist->head.isFullyLinked, bool_val);
+    ATM_STORE(slist->tail.isFullyLinked, bool_val);
     slist->cmpFunc = cmp_func;
 }
 
@@ -116,16 +132,23 @@ static inline int _sl_cmp(SkiplistRaw *slist,
 }
 
 static inline bool _sl_valid_node(SkiplistNode *node) {
-    return !node->removed.load(MOR) && node->isFullyLinked.load(MOR);
+    bool removed = false;
+    bool is_fully_linked = false;
+
+    ATM_LOAD(node->removed, removed);
+    ATM_LOAD(node->isFullyLinked, is_fully_linked);
+
+    return !removed && is_fully_linked;
 }
 
 static inline SkiplistNode* _sl_next(SkiplistRaw *slist,
                                      SkiplistNode *cur_node,
                                      int layer)
 {
-    SkiplistNode *next_node = cur_node->next[layer].load(MOR);
+    SkiplistNode *next_node = NULL;
+    ATM_LOAD(cur_node->next[layer], next_node);
     while ( next_node && !_sl_valid_node(next_node) ) {
-        next_node = next_node->next[layer].load(MOR);
+        ATM_LOAD(next_node->next[layer], next_node);
     }
     return next_node;
 }
@@ -154,8 +177,14 @@ static inline void _sl_clr_flags(SkiplistNode** node_arr,
     for (layer = start_layer; layer <= top_layer; ++layer) {
         if ( layer == top_layer ||
              node_arr[layer] != node_arr[layer+1] ) {
-            __SLD_ASSERT(node_arr[layer]->beingModified.load(MOR) == true);
-            node_arr[layer]->beingModified.store(false, MOR);
+
+            bool being_modified = false;
+            ATM_LOAD(node_arr[layer]->beingModified, being_modified);
+            __SLD_ASSERT(being_modified == true);
+            (void)being_modified;
+
+            bool bool_val = false;
+            ATM_STORE(node_arr[layer]->beingModified, bool_val);
         }
     }
 }
@@ -169,6 +198,7 @@ void skiplist_insert(SkiplistRaw *slist,
                      SkiplistNode *node)
 {
     int top_layer = _sl_decide_top_layer(slist);
+    bool bool_val = true;
 
     // init node before insertion
     _sl_node_init(node, top_layer);
@@ -213,8 +243,8 @@ insert_retry:
                     // => do nothing
                 } else {
                     bool expected = false;
-                    if (prevs[cur_layer]->beingModified.
-                            compare_exchange_weak(expected, true)) {
+                    bool_val = true;
+                    if (ATM_CAS(prevs[cur_layer]->beingModified, expected, bool_val)) {
                         locked_layer = cur_layer;
                     } else {
                         error_code = -1;
@@ -233,7 +263,7 @@ insert_retry:
                 }
 
                 // set current node's pointers
-                node->next[cur_layer].store(nexts[cur_layer], MOR);
+                ATM_STORE(node->next[cur_layer], nexts[cur_layer]);
 
                 if (_sl_next(slist, cur_node, cur_layer) != next_node) {
                     __SLD_NC_INS(cur_node, next_node, top_layer, cur_layer);
@@ -252,11 +282,12 @@ insert_retry:
             // bottom layer => insertion succeeded
             // change prev/next nodes' prev/next pointers from 0 ~ top_layer
             for (layer = 0; layer <= top_layer; ++layer) {
-                prevs[layer]->next[layer].store(node, MOR);
+                ATM_STORE(prevs[layer]->next[layer], node);
             }
 
             // now this node is fully linked
-            node->isFullyLinked.store(true, MOR);
+            bool_val = true;
+            ATM_STORE(node->isFullyLinked, bool_val);
 
             // modification is done for all layers
             _sl_clr_flags(prevs, 0, top_layer);
@@ -294,12 +325,12 @@ SkiplistNode* skiplist_find(SkiplistRaw *slist,
             }
 
             // bottom layer => means that exact match doesn't exist.
-            return nullptr;
+            return NULL;
 
         } while (cur_node != &slist->tail);
     }
 
-    return nullptr;
+    return NULL;
 }
 
 SkiplistNode* skiplist_find_smaller(SkiplistRaw *slist,
@@ -332,15 +363,19 @@ SkiplistNode* skiplist_find_smaller(SkiplistRaw *slist,
         } while (cur_node != &slist->tail);
     }
 
-    return nullptr;
+    return NULL;
 }
 
 int skiplist_erase_node(SkiplistRaw *slist,
                         SkiplistNode *node)
 {
     int top_layer = node->topLayer;
+    bool bool_val = true;
+    bool removed = false;
+    bool is_fully_linked = false;
 
-    if (node->removed.load(MOR)) {
+    ATM_LOAD(node->removed, removed);
+    if (removed) {
         // already removed
         return -1;
     }
@@ -349,17 +384,20 @@ int skiplist_erase_node(SkiplistRaw *slist,
     SkiplistNode* nexts[SKIPLIST_MAX_LAYER];
 
     bool expected = false;
-    if (!node->beingModified.compare_exchange_weak(expected, true)) {
+    bool_val = true;
+    if (!ATM_CAS(node->beingModified, expected, bool_val)) {
         // already being modified .. fail
         __SLD_BM(node);
         return -2;
     }
 
     // clear removed flag first, so that reader cannot read this node.
-    node->removed.store(true, MOR);
+    bool_val = true;
+    ATM_STORE(node->removed, bool_val);
 
 erase_node_retry:
-    if (!node->isFullyLinked.load(MOR)) {
+    ATM_LOAD(node->isFullyLinked, is_fully_linked);
+    if (!is_fully_linked) {
         // already unlinked .. remove is done by other thread
         return -3;
     }
@@ -398,8 +436,8 @@ erase_node_retry:
                     // => do nothing.
                 } else {
                     expected = false;
-                    if (prevs[cur_layer]->beingModified.
-                            compare_exchange_weak(expected, true)) {
+                    bool_val = true;
+                    if (ATM_CAS(prevs[cur_layer]->beingModified, expected, bool_val)) {
                         locked_layer = cur_layer;
                     } else {
                         error_code = -1;
@@ -433,16 +471,18 @@ erase_node_retry:
     // bottom layer => removal succeeded.
     // change prev nodes' next pointer from 0 ~ top_layer
     for (cur_layer = 0; cur_layer <= top_layer; ++cur_layer) {
-        prevs[cur_layer]->next[cur_layer].store(nexts[cur_layer], MOR);
+        ATM_STORE(prevs[cur_layer]->next[cur_layer], nexts[cur_layer]);
     }
 
     // now this node is unlinked
-    node->isFullyLinked.store(false, MOR);
+    bool_val = false;
+    ATM_STORE(node->isFullyLinked, bool_val);
 
     // modification is done for all layers
     _sl_clr_flags(prevs, 0, top_layer);
 
-    node->beingModified.store(false, MOR);
+    bool_val = false;
+    ATM_STORE(node->beingModified, bool_val);
     return 0;
 }
 
@@ -468,7 +508,7 @@ SkiplistNode* skiplist_next(SkiplistRaw *slist,
                             SkiplistNode *node) {
     SkiplistNode *next = _sl_next(slist, node, 0);
     if (next == &slist->tail) {
-        return nullptr;
+        return NULL;
     }
     return next;
 }
@@ -477,7 +517,7 @@ SkiplistNode* skiplist_prev(SkiplistRaw *slist,
                             SkiplistNode *node) {
     SkiplistNode *prev = skiplist_find_smaller(slist, node);
     if (prev == &slist->head) {
-        return nullptr;
+        return NULL;
     }
     return prev;
 }
@@ -485,7 +525,7 @@ SkiplistNode* skiplist_prev(SkiplistRaw *slist,
 SkiplistNode* skiplist_begin(SkiplistRaw *slist) {
     SkiplistNode *next = _sl_next(slist, &slist->head, 0);
     if (next == &slist->tail) {
-        return nullptr;
+        return NULL;
     }
     return next;
 }
