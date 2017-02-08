@@ -71,7 +71,6 @@ void basic_insert_and_erase()
         key[i] = i;
     }
     // shuffle
-    srand(0xabcd);
     for (i=0; i<n; ++i) {
         j = rand() % n;
         temp = key[i];
@@ -154,7 +153,6 @@ void find_test()
         key[i] = i*10;
     }
     // shuffle
-    srand(0x1111);
     for (i=0; i<n; ++i) {
         j = rand() % n;
         temp = key[i];
@@ -323,7 +321,6 @@ void concurrent_write_test(struct test_args t_args)
 
     // shuffle
     if (t_args.random_order) {
-        srand(0x1111);
         for (i=0; i<n; ++i) {
             j = rand() % n;
             temp = key[i];
@@ -446,7 +443,6 @@ void concurrent_write_erase_test(struct test_args t_args)
 
     if (t_args.random_order) {
         // shuffle keys to add
-        srand(0x1111);
         for (i=0; i<n; ++i) {
             j = rand() % n;
             temp = key_add[i];
@@ -631,7 +627,6 @@ void concurrent_write_read_test(struct test_args t_args)
 
     if (t_args.random_order) {
         // shuffle keys to add
-        srand(0x1111);
         for (i=0; i<n; ++i) {
             j = rand() % n;
             temp = key_add[i];
@@ -732,6 +727,8 @@ void concurrent_write_read_test(struct test_args t_args)
 }
 
 int main() {
+    srand(0xabcd);
+
     struct test_args args;
     args.n_keys = 1000000;
     args.random_order = true;
