@@ -40,19 +40,36 @@
     #define __SLD_ASSERT(cond)
 #endif
 
-#ifdef STL_ATOMIC
+#if defined(_STL_ATOMIC) && defined(__cplusplus)
     // C++ (STL) atomic operations
     #define MOR std::memory_order_relaxed
     #define ATM_LOAD(var, val) val = (var).load(MOR)
     #define ATM_STORE(var, val) (var).store(val, MOR)
     #define ATM_CAS(var, exp, val) (var).compare_exchange_weak(exp, val)
+    #define ALLOC_NODE_PTR(var, count) var = new atm_node_ptr[count]
+    #define FREE_NODE_PTR(var) delete[] var
 #else
     // C-style atomic operations
+    #ifndef __cplusplus
+        typedef uint8_t bool;
+
+        #ifndef true
+            #define true 1
+        #endif
+
+        #ifndef false
+            #define false 0
+        #endif
+    #endif
+
     #define MOR __ATOMIC_RELAXED
     #define ATM_LOAD(var, val) __atomic_load(&var, &val, MOR)
     #define ATM_STORE(var, val) __atomic_store(&var, &val, MOR)
     #define ATM_CAS(var, exp, val) \
-        __atomic_compare_exchange(&var, &exp, &val, 1, MOR, MOR)
+                __atomic_compare_exchange(&var, &exp, &val, 1, MOR, MOR)
+    #define ALLOC_NODE_PTR(var, count) \
+                var = (atm_node_ptr*)calloc(count, sizeof(atm_node_ptr));
+    #define FREE_NODE_PTR(var) free(var)
 #endif
 
 static inline void _sl_node_init(SkiplistNode *node,
@@ -73,14 +90,26 @@ static inline void _sl_node_init(SkiplistNode *node,
         node->topLayer = top_layer;
 
         if (node->next) {
-            delete[] node->next;
+            FREE_NODE_PTR(node->next);
         }
-        node->next = new atm_node_ptr[top_layer+1];
+        ALLOC_NODE_PTR(node->next, top_layer+1);
     }
 }
 
 void skiplist_init(SkiplistRaw *slist,
                    skiplist_cmp_t *cmp_func) {
+
+    slist->cmpFunc = NULL;
+    slist->aux = NULL;
+
+    // fanout 4 + layer 12: 4^12 ~= upto 17M items under O(lg n) complexity.
+    // for +17M items, complexity will grow linearly: O(k lg n).
+    slist->fanout = 4;
+    slist->maxLayer = 12;
+
+    skiplist_init_node(&slist->head);
+    skiplist_init_node(&slist->tail);
+
     _sl_node_init(&slist->head, slist->maxLayer);
     _sl_node_init(&slist->tail, slist->maxLayer);
 
@@ -96,12 +125,36 @@ void skiplist_init(SkiplistRaw *slist,
     slist->cmpFunc = cmp_func;
 }
 
-void skiplist_set_config(SkiplistRaw *slist,
-                         SkiplistRawConfig config)
+void skiplist_free(SkiplistRaw *slist)
 {
-    slist->fanout = config.fanout;
-    slist->maxLayer = config.maxLayer;
-    slist->aux = config.aux;
+    skiplist_free_node(&slist->head);
+    skiplist_free_node(&slist->tail);
+}
+
+void skiplist_init_node(SkiplistNode *node)
+{
+    node->next = NULL;
+
+    bool bool_val = false;
+    ATM_STORE(node->isFullyLinked, bool_val);
+    ATM_STORE(node->beingModified, bool_val);
+    ATM_STORE(node->removed, bool_val);
+
+    node->topLayer = 0;
+}
+
+void skiplist_free_node(SkiplistNode *node)
+{
+    FREE_NODE_PTR(node->next);
+}
+
+SkiplistRawConfig skiplist_get_default_config()
+{
+    SkiplistRawConfig ret;
+    ret.fanout = 4;
+    ret.maxLayer = 12;
+    ret.aux = NULL;
+    return ret;
 }
 
 SkiplistRawConfig skiplist_get_config(SkiplistRaw *slist)
@@ -111,6 +164,14 @@ SkiplistRawConfig skiplist_get_config(SkiplistRaw *slist)
     ret.maxLayer = slist->maxLayer;
     ret.aux = slist->aux;
     return ret;
+}
+
+void skiplist_set_config(SkiplistRaw *slist,
+                         SkiplistRawConfig config)
+{
+    slist->fanout = config.fanout;
+    slist->maxLayer = config.maxLayer;
+    slist->aux = config.aux;
 }
 
 static inline int _sl_cmp(SkiplistRaw *slist,
@@ -207,6 +268,9 @@ void skiplist_insert(SkiplistRaw *slist,
     SkiplistNode* nexts[SKIPLIST_MAX_LAYER];
 
 insert_retry:
+    // in pure C, a label can only be part of a stmt.
+    (void)top_layer;
+
     int cmp = 0;
     int cur_layer = 0;
     int layer;

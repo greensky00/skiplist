@@ -38,6 +38,13 @@
 #include "skiplist.h"
 
 struct IntNode {
+    IntNode() {
+        skiplist_init_node(&snode);
+    }
+    ~IntNode() {
+        skiplist_free_node(&snode);
+    }
+
     SkiplistNode snode;
     int value;
 };
@@ -137,6 +144,8 @@ void basic_insert_and_erase()
         cur = skiplist_prev(&list, cur);
     }
     assert(count == 0);
+
+    skiplist_free(&list);
 }
 
 void find_test()
@@ -148,6 +157,7 @@ void find_test()
     int n = 10000;
     std::vector<int> key(n);
     std::vector<IntNode> arr(n);
+
     // assign
     for (i=0; i<n; ++i) {
         key[i] = i*10;
@@ -199,6 +209,8 @@ void find_test()
     elapsed_seconds = end-start;
     printf("find (non-existing key) done: %.4f (%.1f ops/sec)\n",
            elapsed_seconds.count(), n/elapsed_seconds.count());
+
+    skiplist_free(&list);
 }
 
 struct thread_args {
@@ -403,6 +415,8 @@ void concurrent_write_test(struct test_args t_args)
 
     printf("iteration %.4f (%.1f ops/sec)\n",
            elapsed_seconds.count(), n/elapsed_seconds.count());
+
+    skiplist_free(&list);
 }
 
 void concurrent_write_erase_test(struct test_args t_args)
@@ -587,6 +601,8 @@ void concurrent_write_erase_test(struct test_args t_args)
 
     printf("iteration %.4f (%.1f ops/sec)\n",
            elapsed_seconds.count(), n/elapsed_seconds.count());
+
+    skiplist_free(&list);
 }
 
 void concurrent_write_read_test(struct test_args t_args)
@@ -724,13 +740,15 @@ void concurrent_write_read_test(struct test_args t_args)
                n_threads_find,
                n / max_seconds_find);
     }
+
+    skiplist_free(&list);
 }
 
 int main() {
     srand(0xabcd);
 
     struct test_args args;
-    args.n_keys = 1000000;
+    args.n_keys = 40000;
     args.random_order = true;
     args.use_skiplist = true;
 

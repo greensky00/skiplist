@@ -25,93 +25,79 @@
  */
 
 #ifndef _JSAHN_SKIPLIST_H
-#define _JSAHN_SKIPLIST_H 1
+#define _JSAHN_SKIPLIST_H (1)
 
 #include <stddef.h>
 #include <stdint.h>
 
-struct SkiplistNode;
+#define SKIPLIST_MAX_LAYER (256)
 
-#define STL_ATOMIC 1
-#ifdef STL_ATOMIC
+struct _skiplist_node;
+
+#define _STL_ATOMIC (1)
+#if defined(_STL_ATOMIC) && defined(__cplusplus)
     #include <atomic>
-    typedef std::atomic<SkiplistNode*> atm_node_ptr;
+    typedef std::atomic<_skiplist_node*> atm_node_ptr;
     typedef std::atomic<bool> atm_bool;
 #else
-    typedef SkiplistNode* atm_node_ptr;
-    typedef bool atm_bool;
+    typedef struct _skiplist_node* atm_node_ptr;
+    typedef uint8_t atm_bool;
 #endif
 
-struct SkiplistNode {
-    SkiplistNode() :
-        next(NULL),
-        isFullyLinked(false),
-        beingModified(false),
-        removed(false),
-        topLayer(0)
-    { }
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-    ~SkiplistNode() {
-        delete[] next;
-    }
+void skiplist_free_node(struct _skiplist_node *node);
 
+typedef struct _skiplist_node {
     atm_node_ptr *next;
     atm_bool isFullyLinked;
     atm_bool beingModified;
     atm_bool removed;
     uint8_t topLayer; // 0: bottom
-};
-
-#define SKIPLIST_MAX_LAYER (256)
+} SkiplistNode;
 
 // *a  < *b : return neg
 // *a == *b : return 0
 // *a  > *b : return pos
 typedef int skiplist_cmp_t(SkiplistNode *a, SkiplistNode *b, void *aux);
 
-struct SkiplistRawConfig {
-    SkiplistRawConfig() :
-        fanout(4),
-        maxLayer(12),
-        aux(NULL)
-        { }
-
+typedef struct {
     size_t fanout;
     size_t maxLayer;
     void *aux;
-};
+} SkiplistRawConfig;
 
-struct SkiplistRaw {
-    // fanout 4 + layer 12: 4^12 ~= upto 17M items under O(lg n) complexity.
-    // for +17M items, complexity will grow linearly: O(k lg n).
-    SkiplistRaw() :
-        cmpFunc(NULL),
-        aux(NULL),
-        fanout(4),
-        maxLayer(12)
-        { }
-
+typedef struct {
     SkiplistNode head;
     SkiplistNode tail;
     skiplist_cmp_t *cmpFunc;
     void *aux;
     uint8_t fanout;
     uint8_t maxLayer;
-};
+} SkiplistRaw;
 
 #ifndef _get_entry
 #define _get_entry(ELEM, STRUCT, MEMBER)                              \
         ((STRUCT *) ((uint8_t *) (ELEM) - offsetof (STRUCT, MEMBER)))
 #endif
 
-
 void skiplist_init(SkiplistRaw *slist,
                    skiplist_cmp_t *cmp_func);
 
-void skiplist_set_config(SkiplistRaw *slist,
-                         SkiplistRawConfig config);
+void skiplist_free(SkiplistRaw *slist);
+
+void skiplist_init_node(SkiplistNode *node);
+
+void skiplist_free_node(SkiplistNode *node);
+
+SkiplistRawConfig skiplist_get_default_config();
 
 SkiplistRawConfig skiplist_get_config(SkiplistRaw *slist);
+
+void skiplist_set_config(SkiplistRaw *slist,
+                         SkiplistRawConfig config);
 
 void skiplist_insert(SkiplistRaw *slist,
                      SkiplistNode *node);
@@ -138,5 +124,8 @@ SkiplistNode* skiplist_begin(SkiplistRaw *slist);
 
 SkiplistNode* skiplist_end(SkiplistRaw *slist);
 
-#endif  // _JSAHN_SKIPLIST_H
+#ifdef __cplusplus
+}
+#endif
 
+#endif  // _JSAHN_SKIPLIST_H
