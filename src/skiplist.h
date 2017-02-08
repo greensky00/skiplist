@@ -48,8 +48,6 @@ struct _skiplist_node;
 extern "C" {
 #endif
 
-void skiplist_free_node(struct _skiplist_node *node);
-
 typedef struct _skiplist_node {
     atm_node_ptr *next;
     atm_bool is_fully_linked;
