@@ -72,7 +72,7 @@
     #define FREE_NODE_PTR(var) free(var)
 #endif
 
-static inline void _sl_node_init(SkiplistNode *node,
+static inline void _sl_node_init(skiplist_node *node,
                                  size_t top_layer)
 {
     if (top_layer > UINT8_MAX) {
@@ -96,7 +96,7 @@ static inline void _sl_node_init(SkiplistNode *node,
     }
 }
 
-void skiplist_init(SkiplistRaw *slist,
+void skiplist_init(skiplist_raw *slist,
                    skiplist_cmp_t *cmp_func) {
 
     slist->cmpFunc = NULL;
@@ -125,13 +125,13 @@ void skiplist_init(SkiplistRaw *slist,
     slist->cmpFunc = cmp_func;
 }
 
-void skiplist_free(SkiplistRaw *slist)
+void skiplist_free(skiplist_raw *slist)
 {
     skiplist_free_node(&slist->head);
     skiplist_free_node(&slist->tail);
 }
 
-void skiplist_init_node(SkiplistNode *node)
+void skiplist_init_node(skiplist_node *node)
 {
     node->next = NULL;
 
@@ -143,40 +143,40 @@ void skiplist_init_node(SkiplistNode *node)
     node->topLayer = 0;
 }
 
-void skiplist_free_node(SkiplistNode *node)
+void skiplist_free_node(skiplist_node *node)
 {
     FREE_NODE_PTR(node->next);
 }
 
-SkiplistRawConfig skiplist_get_default_config()
+skiplist_raw_config skiplist_get_default_config()
 {
-    SkiplistRawConfig ret;
+    skiplist_raw_config ret;
     ret.fanout = 4;
     ret.maxLayer = 12;
     ret.aux = NULL;
     return ret;
 }
 
-SkiplistRawConfig skiplist_get_config(SkiplistRaw *slist)
+skiplist_raw_config skiplist_get_config(skiplist_raw *slist)
 {
-    SkiplistRawConfig ret;
+    skiplist_raw_config ret;
     ret.fanout = slist->fanout;
     ret.maxLayer = slist->maxLayer;
     ret.aux = slist->aux;
     return ret;
 }
 
-void skiplist_set_config(SkiplistRaw *slist,
-                         SkiplistRawConfig config)
+void skiplist_set_config(skiplist_raw *slist,
+                         skiplist_raw_config config)
 {
     slist->fanout = config.fanout;
     slist->maxLayer = config.maxLayer;
     slist->aux = config.aux;
 }
 
-static inline int _sl_cmp(SkiplistRaw *slist,
-                          SkiplistNode *a,
-                          SkiplistNode *b)
+static inline int _sl_cmp(skiplist_raw *slist,
+                          skiplist_node *a,
+                          skiplist_node *b)
 {
     if (a == b) {
         return 0;
@@ -192,7 +192,7 @@ static inline int _sl_cmp(SkiplistRaw *slist,
     return slist->cmpFunc(a, b, slist->aux);
 }
 
-static inline bool _sl_valid_node(SkiplistNode *node) {
+static inline bool _sl_valid_node(skiplist_node *node) {
     bool removed = false;
     bool is_fully_linked = false;
 
@@ -202,11 +202,11 @@ static inline bool _sl_valid_node(SkiplistNode *node) {
     return !removed && is_fully_linked;
 }
 
-static inline SkiplistNode* _sl_next(SkiplistRaw *slist,
-                                     SkiplistNode *cur_node,
+static inline skiplist_node* _sl_next(skiplist_raw *slist,
+                                     skiplist_node *cur_node,
                                      int layer)
 {
-    SkiplistNode *next_node = NULL;
+    skiplist_node *next_node = NULL;
     ATM_LOAD(cur_node->next[layer], next_node);
     while ( next_node && !_sl_valid_node(next_node) ) {
         ATM_LOAD(next_node->next[layer], next_node);
@@ -214,7 +214,7 @@ static inline SkiplistNode* _sl_next(SkiplistRaw *slist,
     return next_node;
 }
 
-static inline size_t _sl_decide_top_layer(SkiplistRaw *slist)
+static inline size_t _sl_decide_top_layer(skiplist_raw *slist)
 {
     size_t layer = 0;
     while (layer+1 < slist->maxLayer) {
@@ -230,7 +230,7 @@ static inline size_t _sl_decide_top_layer(SkiplistRaw *slist)
     return layer;
 }
 
-static inline void _sl_clr_flags(SkiplistNode** node_arr,
+static inline void _sl_clr_flags(skiplist_node** node_arr,
                                  int start_layer,
                                  int top_layer)
 {
@@ -250,13 +250,13 @@ static inline void _sl_clr_flags(SkiplistNode** node_arr,
     }
 }
 
-static inline bool _sl_valid_prev_next(SkiplistNode *prev,
-                                       SkiplistNode *next) {
+static inline bool _sl_valid_prev_next(skiplist_node *prev,
+                                       skiplist_node *next) {
     return _sl_valid_node(prev) && _sl_valid_node(next);
 }
 
-void skiplist_insert(SkiplistRaw *slist,
-                     SkiplistNode *node)
+void skiplist_insert(skiplist_raw *slist,
+                     skiplist_node *node)
 {
     int top_layer = _sl_decide_top_layer(slist);
     bool bool_val = true;
@@ -264,8 +264,8 @@ void skiplist_insert(SkiplistRaw *slist,
     // init node before insertion
     _sl_node_init(node, top_layer);
 
-    SkiplistNode* prevs[SKIPLIST_MAX_LAYER];
-    SkiplistNode* nexts[SKIPLIST_MAX_LAYER];
+    skiplist_node* prevs[SKIPLIST_MAX_LAYER];
+    skiplist_node* nexts[SKIPLIST_MAX_LAYER];
 
 insert_retry:
     // in pure C, a label can only be part of a stmt.
@@ -274,11 +274,11 @@ insert_retry:
     int cmp = 0;
     int cur_layer = 0;
     int layer;
-    SkiplistNode *cur_node = &slist->head;
+    skiplist_node *cur_node = &slist->head;
 
     for (cur_layer = slist->maxLayer-1; cur_layer >= 0; --cur_layer) {
         do {
-            SkiplistNode *next_node = _sl_next(slist, cur_node, cur_layer);
+            skiplist_node *next_node = _sl_next(slist, cur_node, cur_layer);
             cmp = _sl_cmp(slist, node, next_node);
             if (cmp > 0) {
                 // next_node < node
@@ -361,16 +361,16 @@ insert_retry:
     }
 }
 
-SkiplistNode* skiplist_find(SkiplistRaw *slist,
-                            SkiplistNode *query)
+skiplist_node* skiplist_find(skiplist_raw *slist,
+                            skiplist_node *query)
 {
     int cmp = 0;
     int cur_layer = 0;
-    SkiplistNode *cur_node = &slist->head;
+    skiplist_node *cur_node = &slist->head;
 
     for (cur_layer = slist->maxLayer-1; cur_layer >= 0; --cur_layer) {
         do {
-            SkiplistNode *next_node = _sl_next(slist, cur_node, cur_layer);
+            skiplist_node *next_node = _sl_next(slist, cur_node, cur_layer);
             cmp = _sl_cmp(slist, query, next_node);
             if (cmp > 0) {
                 // next_node < query
@@ -397,16 +397,16 @@ SkiplistNode* skiplist_find(SkiplistRaw *slist,
     return NULL;
 }
 
-SkiplistNode* skiplist_find_smaller(SkiplistRaw *slist,
-                                    SkiplistNode *query)
+skiplist_node* skiplist_find_smaller(skiplist_raw *slist,
+                                    skiplist_node *query)
 {
     int cmp = 0;
     int cur_layer = 0;
-    SkiplistNode *cur_node = &slist->head;
+    skiplist_node *cur_node = &slist->head;
 
     for (cur_layer = slist->maxLayer-1; cur_layer >= 0; --cur_layer) {
         do {
-            SkiplistNode *next_node = _sl_next(slist, cur_node, cur_layer);
+            skiplist_node *next_node = _sl_next(slist, cur_node, cur_layer);
             cmp = _sl_cmp(slist, query, next_node);
             if (cmp > 0) {
                 // next_node < query
@@ -430,8 +430,8 @@ SkiplistNode* skiplist_find_smaller(SkiplistRaw *slist,
     return NULL;
 }
 
-int skiplist_erase_node(SkiplistRaw *slist,
-                        SkiplistNode *node)
+int skiplist_erase_node(skiplist_raw *slist,
+                        skiplist_node *node)
 {
     int top_layer = node->topLayer;
     bool bool_val = true;
@@ -444,8 +444,8 @@ int skiplist_erase_node(SkiplistRaw *slist,
         return -1;
     }
 
-    SkiplistNode* prevs[SKIPLIST_MAX_LAYER];
-    SkiplistNode* nexts[SKIPLIST_MAX_LAYER];
+    skiplist_node* prevs[SKIPLIST_MAX_LAYER];
+    skiplist_node* nexts[SKIPLIST_MAX_LAYER];
 
     bool expected = false;
     bool_val = true;
@@ -468,11 +468,11 @@ erase_node_retry:
 
     int cmp = 0;
     int cur_layer = slist->maxLayer - 1;
-    SkiplistNode *cur_node = &slist->head;
+    skiplist_node *cur_node = &slist->head;
 
     for (; cur_layer >= 0; --cur_layer) {
         do {
-            SkiplistNode *next_node = _sl_next(slist, cur_node, cur_layer);
+            skiplist_node *next_node = _sl_next(slist, cur_node, cur_layer);
 
             cmp = _sl_cmp(slist, node, next_node);
             if (cmp > 0) {
@@ -550,10 +550,10 @@ erase_node_retry:
     return 0;
 }
 
-int skiplist_erase(SkiplistRaw *slist,
-                   SkiplistNode *query)
+int skiplist_erase(skiplist_raw *slist,
+                   skiplist_node *query)
 {
-    SkiplistNode *found = skiplist_find(slist, query);
+    skiplist_node *found = skiplist_find(slist, query);
     if (!found) {
         // key not found
         return -4;
@@ -568,33 +568,33 @@ int skiplist_erase(SkiplistRaw *slist,
     return ret;
 }
 
-SkiplistNode* skiplist_next(SkiplistRaw *slist,
-                            SkiplistNode *node) {
-    SkiplistNode *next = _sl_next(slist, node, 0);
+skiplist_node* skiplist_next(skiplist_raw *slist,
+                            skiplist_node *node) {
+    skiplist_node *next = _sl_next(slist, node, 0);
     if (next == &slist->tail) {
         return NULL;
     }
     return next;
 }
 
-SkiplistNode* skiplist_prev(SkiplistRaw *slist,
-                            SkiplistNode *node) {
-    SkiplistNode *prev = skiplist_find_smaller(slist, node);
+skiplist_node* skiplist_prev(skiplist_raw *slist,
+                            skiplist_node *node) {
+    skiplist_node *prev = skiplist_find_smaller(slist, node);
     if (prev == &slist->head) {
         return NULL;
     }
     return prev;
 }
 
-SkiplistNode* skiplist_begin(SkiplistRaw *slist) {
-    SkiplistNode *next = _sl_next(slist, &slist->head, 0);
+skiplist_node* skiplist_begin(skiplist_raw *slist) {
+    skiplist_node *next = _sl_next(slist, &slist->head, 0);
     if (next == &slist->tail) {
         return NULL;
     }
     return next;
 }
 
-SkiplistNode* skiplist_end(SkiplistRaw *slist) {
+skiplist_node* skiplist_end(skiplist_raw *slist) {
     return skiplist_prev(slist, &slist->tail);
 }
 

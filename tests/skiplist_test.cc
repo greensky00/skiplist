@@ -45,11 +45,11 @@ struct IntNode {
         skiplist_free_node(&snode);
     }
 
-    SkiplistNode snode;
+    skiplist_node snode;
     int value;
 };
 
-int _cmp_IntNode(SkiplistNode *a, SkiplistNode *b, void *aux)
+int _cmp_IntNode(skiplist_node *a, skiplist_node *b, void *aux)
 {
     IntNode *aa, *bb;
     aa = _get_entry(a, IntNode, snode);
@@ -65,7 +65,7 @@ int _cmp_IntNode(SkiplistNode *a, SkiplistNode *b, void *aux)
 
 void basic_insert_and_erase()
 {
-    SkiplistRaw list;
+    skiplist_raw list;
     skiplist_init(&list, _cmp_IntNode);
 
     int i, j, temp;
@@ -93,7 +93,7 @@ void basic_insert_and_erase()
 
     // forward iteration
     int count = 0;
-    SkiplistNode *cur = skiplist_begin(&list);
+    skiplist_node *cur = skiplist_begin(&list);
     while (cur) {
         IntNode *node = _get_entry(cur, IntNode, snode);
         assert(node->value == count);
@@ -150,7 +150,7 @@ void basic_insert_and_erase()
 
 void find_test()
 {
-    SkiplistRaw list;
+    skiplist_raw list;
     skiplist_init(&list, _cmp_IntNode);
 
     int i, j, temp;
@@ -183,7 +183,7 @@ void find_test()
 
     // find exact match key
     IntNode query, *item;
-    SkiplistNode *ret;
+    skiplist_node *ret;
 
     start = std::chrono::system_clock::now();
     for (i=0; i<n; ++i) {
@@ -214,7 +214,7 @@ void find_test()
 }
 
 struct thread_args {
-    SkiplistRaw* list;
+    skiplist_raw* list;
     std::set<int>* stl_set;
     std::mutex *lock;
     bool use_skiplist;
@@ -298,7 +298,7 @@ void* reader_thread(void *voidargs)
         IntNode query;
         if (args->use_skiplist) {
             query.value = args->key->at(i);
-            SkiplistNode *ret = skiplist_find(args->list, &query.snode);
+            skiplist_node *ret = skiplist_find(args->list, &query.snode);
             (void)ret;
         } else {
             args->lock->lock();
@@ -316,7 +316,7 @@ void* reader_thread(void *voidargs)
 
 void concurrent_write_test(struct test_args t_args)
 {
-    SkiplistRaw list;
+    skiplist_raw list;
     std::mutex lock;
     std::set<int> stl_set;
 
@@ -387,15 +387,15 @@ void concurrent_write_test(struct test_args t_args)
 
     int count = 0;
     bool corruption = false;
-    SkiplistNode *cur = skiplist_begin(&list);
+    skiplist_node *cur = skiplist_begin(&list);
     while (cur) {
         IntNode *node = _get_entry(cur, IntNode, snode);
         if (node->value != count) {
-            SkiplistNode *missing = &arr[count].snode;
+            skiplist_node *missing = &arr[count].snode;
             printf("idx %d is missing, %lx\n", count, (uint64_t)missing);
 
-            SkiplistNode *prev = skiplist_prev(&list, missing);
-            SkiplistNode *next = skiplist_next(&list, missing);
+            skiplist_node *prev = skiplist_prev(&list, missing);
+            skiplist_node *next = skiplist_next(&list, missing);
             IntNode *prev_node = _get_entry(prev, IntNode, snode);
             IntNode *next_node = _get_entry(next, IntNode, snode);
             printf("%d %d\n", prev_node->value, next_node->value);
@@ -421,7 +421,7 @@ void concurrent_write_test(struct test_args t_args)
 
 void concurrent_write_erase_test(struct test_args t_args)
 {
-    SkiplistRaw list;
+    skiplist_raw list;
     std::mutex lock;
     std::set<int> stl_set;
 
@@ -567,8 +567,8 @@ void concurrent_write_erase_test(struct test_args t_args)
 
     int count = 0;
     bool corruption = false;
-    SkiplistNode *cur = skiplist_begin(&list);
-    std::vector<SkiplistNode*> dbg_node(n);
+    skiplist_node *cur = skiplist_begin(&list);
+    std::vector<skiplist_node*> dbg_node(n);
     std::vector<IntNode*> dbg_int(n);
 
     while (cur) {
@@ -578,11 +578,11 @@ void concurrent_write_erase_test(struct test_args t_args)
         // 5, 15, 25, 35 ...
         int idx = count * 10 + 5;
         if (node->value != idx) {
-            SkiplistNode *missing = &arr_add_dbgref[count]->snode;
+            skiplist_node *missing = &arr_add_dbgref[count]->snode;
             printf("count %d, idx %d is missing %lx\n", count, idx, (uint64_t)missing);
 
-            SkiplistNode *prev = skiplist_prev(&list, missing);
-            SkiplistNode *next = skiplist_next(&list, missing);
+            skiplist_node *prev = skiplist_prev(&list, missing);
+            skiplist_node *next = skiplist_next(&list, missing);
             IntNode *prev_node = _get_entry(prev, IntNode, snode);
             IntNode *next_node = _get_entry(next, IntNode, snode);
             printf("%d %d\n", prev_node->value, next_node->value);
@@ -607,7 +607,7 @@ void concurrent_write_erase_test(struct test_args t_args)
 
 void concurrent_write_read_test(struct test_args t_args)
 {
-    SkiplistRaw list;
+    skiplist_raw list;
     std::mutex lock;
     std::set<int> stl_set;
 

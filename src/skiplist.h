@@ -56,73 +56,73 @@ typedef struct _skiplist_node {
     atm_bool beingModified;
     atm_bool removed;
     uint8_t topLayer; // 0: bottom
-} SkiplistNode;
+} skiplist_node;
 
 // *a  < *b : return neg
 // *a == *b : return 0
 // *a  > *b : return pos
-typedef int skiplist_cmp_t(SkiplistNode *a, SkiplistNode *b, void *aux);
+typedef int skiplist_cmp_t(skiplist_node *a, skiplist_node *b, void *aux);
 
 typedef struct {
     size_t fanout;
     size_t maxLayer;
     void *aux;
-} SkiplistRawConfig;
+} skiplist_raw_config;
 
 typedef struct {
-    SkiplistNode head;
-    SkiplistNode tail;
+    skiplist_node head;
+    skiplist_node tail;
     skiplist_cmp_t *cmpFunc;
     void *aux;
     uint8_t fanout;
     uint8_t maxLayer;
-} SkiplistRaw;
+} skiplist_raw;
 
 #ifndef _get_entry
 #define _get_entry(ELEM, STRUCT, MEMBER)                              \
         ((STRUCT *) ((uint8_t *) (ELEM) - offsetof (STRUCT, MEMBER)))
 #endif
 
-void skiplist_init(SkiplistRaw *slist,
+void skiplist_init(skiplist_raw *slist,
                    skiplist_cmp_t *cmp_func);
 
-void skiplist_free(SkiplistRaw *slist);
+void skiplist_free(skiplist_raw *slist);
 
-void skiplist_init_node(SkiplistNode *node);
+void skiplist_init_node(skiplist_node *node);
 
-void skiplist_free_node(SkiplistNode *node);
+void skiplist_free_node(skiplist_node *node);
 
-SkiplistRawConfig skiplist_get_default_config();
+skiplist_raw_config skiplist_get_default_config();
 
-SkiplistRawConfig skiplist_get_config(SkiplistRaw *slist);
+skiplist_raw_config skiplist_get_config(skiplist_raw *slist);
 
-void skiplist_set_config(SkiplistRaw *slist,
-                         SkiplistRawConfig config);
+void skiplist_set_config(skiplist_raw *slist,
+                         skiplist_raw_config config);
 
-void skiplist_insert(SkiplistRaw *slist,
-                     SkiplistNode *node);
+void skiplist_insert(skiplist_raw *slist,
+                     skiplist_node *node);
 
-SkiplistNode* skiplist_find(SkiplistRaw *slist,
-                            SkiplistNode *query);
+skiplist_node* skiplist_find(skiplist_raw *slist,
+                            skiplist_node *query);
 
-SkiplistNode* skiplist_find_smaller(SkiplistRaw *slist,
-                                    SkiplistNode *query);
+skiplist_node* skiplist_find_smaller(skiplist_raw *slist,
+                                    skiplist_node *query);
 
-int skiplist_erase_node(SkiplistRaw *slist,
-                        SkiplistNode *node);
+int skiplist_erase_node(skiplist_raw *slist,
+                        skiplist_node *node);
 
-int skiplist_erase(SkiplistRaw *slist,
-                   SkiplistNode *query);
+int skiplist_erase(skiplist_raw *slist,
+                   skiplist_node *query);
 
-SkiplistNode* skiplist_next(SkiplistRaw *slist,
-                            SkiplistNode *node);
+skiplist_node* skiplist_next(skiplist_raw *slist,
+                            skiplist_node *node);
 
-SkiplistNode* skiplist_prev(SkiplistRaw *slist,
-                            SkiplistNode *node);
+skiplist_node* skiplist_prev(skiplist_raw *slist,
+                            skiplist_node *node);
 
-SkiplistNode* skiplist_begin(SkiplistRaw *slist);
+skiplist_node* skiplist_begin(skiplist_raw *slist);
 
-SkiplistNode* skiplist_end(SkiplistRaw *slist);
+skiplist_node* skiplist_end(skiplist_raw *slist);
 
 #ifdef __cplusplus
 }

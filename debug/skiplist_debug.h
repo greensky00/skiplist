@@ -32,7 +32,7 @@
 #include "skiplist.h"
 
 struct dbg_node {
-    SkiplistNode snode;
+    skiplist_node snode;
     int value;
 };
 
@@ -44,7 +44,7 @@ struct dbg_node {
 #define __SLD_ASSERT(cond) assert(cond)
 
 inline void __sld_rt_ins(int error_code,
-                         SkiplistNode *node,
+                         skiplist_node *node,
                          int top_layer,
                          int cur_layer)
 {
@@ -55,8 +55,8 @@ inline void __sld_rt_ins(int error_code,
            top_layer, cur_layer, ddd->value);
 }
 
-inline void __sld_nc_ins(SkiplistNode *node,
-                         SkiplistNode *next_node,
+inline void __sld_nc_ins(skiplist_node *node,
+                         skiplist_node *next_node,
                          int top_layer,
                          int cur_layer)
 {
@@ -70,7 +70,7 @@ inline void __sld_nc_ins(SkiplistNode *node,
 }
 
 inline void __sld_rt_rmv(int error_code,
-                         SkiplistNode *node,
+                         skiplist_node *node,
                          int top_layer,
                          int cur_layer)
 {
@@ -81,8 +81,8 @@ inline void __sld_rt_rmv(int error_code,
            top_layer, cur_layer, ddd->value);
 }
 
-inline void __sld_nc_rmv(SkiplistNode *node,
-                         SkiplistNode *next_node,
+inline void __sld_nc_rmv(skiplist_node *node,
+                         skiplist_node *next_node,
                          int top_layer,
                          int cur_layer)
 {
@@ -95,7 +95,7 @@ inline void __sld_nc_rmv(SkiplistNode *node,
            top_layer, cur_layer, ddd->value, ddd_next->value);
 }
 
-inline void __sld_bm(SkiplistNode *node) {
+inline void __sld_bm(skiplist_node *node) {
     dbg_node *ddd = _get_entry(node, dbg_node, snode);
     printf("[RMV] node is being modified %d\n", ddd->value);
 }
