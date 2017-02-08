@@ -65,10 +65,10 @@
     #define MOR __ATOMIC_RELAXED
     #define ATM_LOAD(var, val) __atomic_load(&var, &val, MOR)
     #define ATM_STORE(var, val) __atomic_store(&var, &val, MOR)
-    #define ATM_CAS(var, exp, val) \
-                __atomic_compare_exchange(&var, &exp, &val, 1, MOR, MOR)
-    #define ALLOC_NODE_PTR(var, count) \
-                var = (atm_node_ptr*)calloc(count, sizeof(atm_node_ptr));
+    #define ATM_CAS(var, exp, val)                                   \
+            __atomic_compare_exchange(&var, &exp, &val, 1, MOR, MOR)
+    #define ALLOC_NODE_PTR(var, count)                               \
+            var = (atm_node_ptr*)calloc(count, sizeof(atm_node_ptr))
     #define FREE_NODE_PTR(var) free(var)
 #endif
 
@@ -80,14 +80,14 @@ static inline void _sl_node_init(skiplist_node *node,
     }
 
     bool bool_val = false;
-    ATM_STORE(node->isFullyLinked, bool_val);
-    ATM_STORE(node->beingModified, bool_val);
+    ATM_STORE(node->is_fully_linked, bool_val);
+    ATM_STORE(node->being_modified, bool_val);
     ATM_STORE(node->removed, bool_val);
 
-    if (node->topLayer != top_layer ||
+    if (node->top_layer != top_layer ||
         node->next == NULL) {
 
-        node->topLayer = top_layer;
+        node->top_layer = top_layer;
 
         if (node->next) {
             FREE_NODE_PTR(node->next);
@@ -99,30 +99,30 @@ static inline void _sl_node_init(skiplist_node *node,
 void skiplist_init(skiplist_raw *slist,
                    skiplist_cmp_t *cmp_func) {
 
-    slist->cmpFunc = NULL;
+    slist->cmp_func = NULL;
     slist->aux = NULL;
 
     // fanout 4 + layer 12: 4^12 ~= upto 17M items under O(lg n) complexity.
     // for +17M items, complexity will grow linearly: O(k lg n).
     slist->fanout = 4;
-    slist->maxLayer = 12;
+    slist->max_layer = 12;
 
     skiplist_init_node(&slist->head);
     skiplist_init_node(&slist->tail);
 
-    _sl_node_init(&slist->head, slist->maxLayer);
-    _sl_node_init(&slist->tail, slist->maxLayer);
+    _sl_node_init(&slist->head, slist->max_layer);
+    _sl_node_init(&slist->tail, slist->max_layer);
 
     size_t layer;
-    for (layer = 0; layer < slist->maxLayer; ++layer) {
+    for (layer = 0; layer < slist->max_layer; ++layer) {
         slist->head.next[layer] = &slist->tail;
         slist->tail.next[layer] = NULL;
     }
 
     bool bool_val = true;
-    ATM_STORE(slist->head.isFullyLinked, bool_val);
-    ATM_STORE(slist->tail.isFullyLinked, bool_val);
-    slist->cmpFunc = cmp_func;
+    ATM_STORE(slist->head.is_fully_linked, bool_val);
+    ATM_STORE(slist->tail.is_fully_linked, bool_val);
+    slist->cmp_func = cmp_func;
 }
 
 void skiplist_free(skiplist_raw *slist)
@@ -136,11 +136,11 @@ void skiplist_init_node(skiplist_node *node)
     node->next = NULL;
 
     bool bool_val = false;
-    ATM_STORE(node->isFullyLinked, bool_val);
-    ATM_STORE(node->beingModified, bool_val);
+    ATM_STORE(node->is_fully_linked, bool_val);
+    ATM_STORE(node->being_modified, bool_val);
     ATM_STORE(node->removed, bool_val);
 
-    node->topLayer = 0;
+    node->top_layer = 0;
 }
 
 void skiplist_free_node(skiplist_node *node)
@@ -161,7 +161,7 @@ skiplist_raw_config skiplist_get_config(skiplist_raw *slist)
 {
     skiplist_raw_config ret;
     ret.fanout = slist->fanout;
-    ret.maxLayer = slist->maxLayer;
+    ret.maxLayer = slist->max_layer;
     ret.aux = slist->aux;
     return ret;
 }
@@ -170,7 +170,7 @@ void skiplist_set_config(skiplist_raw *slist,
                          skiplist_raw_config config)
 {
     slist->fanout = config.fanout;
-    slist->maxLayer = config.maxLayer;
+    slist->max_layer = config.maxLayer;
     slist->aux = config.aux;
 }
 
@@ -189,7 +189,7 @@ static inline int _sl_cmp(skiplist_raw *slist,
         b == &slist->head) {
         return 1;
     }
-    return slist->cmpFunc(a, b, slist->aux);
+    return slist->cmp_func(a, b, slist->aux);
 }
 
 static inline bool _sl_valid_node(skiplist_node *node) {
@@ -197,7 +197,7 @@ static inline bool _sl_valid_node(skiplist_node *node) {
     bool is_fully_linked = false;
 
     ATM_LOAD(node->removed, removed);
-    ATM_LOAD(node->isFullyLinked, is_fully_linked);
+    ATM_LOAD(node->is_fully_linked, is_fully_linked);
 
     return !removed && is_fully_linked;
 }
@@ -217,7 +217,7 @@ static inline skiplist_node* _sl_next(skiplist_raw *slist,
 static inline size_t _sl_decide_top_layer(skiplist_raw *slist)
 {
     size_t layer = 0;
-    while (layer+1 < slist->maxLayer) {
+    while (layer+1 < slist->max_layer) {
         // coin filp
         if (rand() % slist->fanout == 0) {
             // grow: 1/fanout probability
@@ -240,12 +240,12 @@ static inline void _sl_clr_flags(skiplist_node** node_arr,
              node_arr[layer] != node_arr[layer+1] ) {
 
             bool being_modified = false;
-            ATM_LOAD(node_arr[layer]->beingModified, being_modified);
+            ATM_LOAD(node_arr[layer]->being_modified, being_modified);
             __SLD_ASSERT(being_modified == true);
             (void)being_modified;
 
             bool bool_val = false;
-            ATM_STORE(node_arr[layer]->beingModified, bool_val);
+            ATM_STORE(node_arr[layer]->being_modified, bool_val);
         }
     }
 }
@@ -276,7 +276,7 @@ insert_retry:
     int layer;
     skiplist_node *cur_node = &slist->head;
 
-    for (cur_layer = slist->maxLayer-1; cur_layer >= 0; --cur_layer) {
+    for (cur_layer = slist->max_layer-1; cur_layer >= 0; --cur_layer) {
         do {
             skiplist_node *next_node = _sl_next(slist, cur_node, cur_layer);
             cmp = _sl_cmp(slist, node, next_node);
@@ -308,7 +308,7 @@ insert_retry:
                 } else {
                     bool expected = false;
                     bool_val = true;
-                    if (ATM_CAS(prevs[cur_layer]->beingModified, expected, bool_val)) {
+                    if (ATM_CAS(prevs[cur_layer]->being_modified, expected, bool_val)) {
                         locked_layer = cur_layer;
                     } else {
                         error_code = -1;
@@ -351,7 +351,7 @@ insert_retry:
 
             // now this node is fully linked
             bool_val = true;
-            ATM_STORE(node->isFullyLinked, bool_val);
+            ATM_STORE(node->is_fully_linked, bool_val);
 
             // modification is done for all layers
             _sl_clr_flags(prevs, 0, top_layer);
@@ -368,7 +368,7 @@ skiplist_node* skiplist_find(skiplist_raw *slist,
     int cur_layer = 0;
     skiplist_node *cur_node = &slist->head;
 
-    for (cur_layer = slist->maxLayer-1; cur_layer >= 0; --cur_layer) {
+    for (cur_layer = slist->max_layer-1; cur_layer >= 0; --cur_layer) {
         do {
             skiplist_node *next_node = _sl_next(slist, cur_node, cur_layer);
             cmp = _sl_cmp(slist, query, next_node);
@@ -404,7 +404,7 @@ skiplist_node* skiplist_find_smaller(skiplist_raw *slist,
     int cur_layer = 0;
     skiplist_node *cur_node = &slist->head;
 
-    for (cur_layer = slist->maxLayer-1; cur_layer >= 0; --cur_layer) {
+    for (cur_layer = slist->max_layer-1; cur_layer >= 0; --cur_layer) {
         do {
             skiplist_node *next_node = _sl_next(slist, cur_node, cur_layer);
             cmp = _sl_cmp(slist, query, next_node);
@@ -433,7 +433,7 @@ skiplist_node* skiplist_find_smaller(skiplist_raw *slist,
 int skiplist_erase_node(skiplist_raw *slist,
                         skiplist_node *node)
 {
-    int top_layer = node->topLayer;
+    int top_layer = node->top_layer;
     bool bool_val = true;
     bool removed = false;
     bool is_fully_linked = false;
@@ -449,7 +449,7 @@ int skiplist_erase_node(skiplist_raw *slist,
 
     bool expected = false;
     bool_val = true;
-    if (!ATM_CAS(node->beingModified, expected, bool_val)) {
+    if (!ATM_CAS(node->being_modified, expected, bool_val)) {
         // already being modified .. fail
         __SLD_BM(node);
         return -2;
@@ -460,14 +460,14 @@ int skiplist_erase_node(skiplist_raw *slist,
     ATM_STORE(node->removed, bool_val);
 
 erase_node_retry:
-    ATM_LOAD(node->isFullyLinked, is_fully_linked);
+    ATM_LOAD(node->is_fully_linked, is_fully_linked);
     if (!is_fully_linked) {
         // already unlinked .. remove is done by other thread
         return -3;
     }
 
     int cmp = 0;
-    int cur_layer = slist->maxLayer - 1;
+    int cur_layer = slist->max_layer - 1;
     skiplist_node *cur_node = &slist->head;
 
     for (; cur_layer >= 0; --cur_layer) {
@@ -501,7 +501,7 @@ erase_node_retry:
                 } else {
                     expected = false;
                     bool_val = true;
-                    if (ATM_CAS(prevs[cur_layer]->beingModified, expected, bool_val)) {
+                    if (ATM_CAS(prevs[cur_layer]->being_modified, expected, bool_val)) {
                         locked_layer = cur_layer;
                     } else {
                         error_code = -1;
@@ -540,13 +540,13 @@ erase_node_retry:
 
     // now this node is unlinked
     bool_val = false;
-    ATM_STORE(node->isFullyLinked, bool_val);
+    ATM_STORE(node->is_fully_linked, bool_val);
 
     // modification is done for all layers
     _sl_clr_flags(prevs, 0, top_layer);
 
     bool_val = false;
-    ATM_STORE(node->beingModified, bool_val);
+    ATM_STORE(node->being_modified, bool_val);
     return 0;
 }
 

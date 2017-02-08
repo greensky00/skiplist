@@ -52,10 +52,10 @@ void skiplist_free_node(struct _skiplist_node *node);
 
 typedef struct _skiplist_node {
     atm_node_ptr *next;
-    atm_bool isFullyLinked;
-    atm_bool beingModified;
+    atm_bool is_fully_linked;
+    atm_bool being_modified;
     atm_bool removed;
-    uint8_t topLayer; // 0: bottom
+    uint8_t top_layer; // 0: bottom
 } skiplist_node;
 
 // *a  < *b : return neg
@@ -72,10 +72,10 @@ typedef struct {
 typedef struct {
     skiplist_node head;
     skiplist_node tail;
-    skiplist_cmp_t *cmpFunc;
+    skiplist_cmp_t *cmp_func;
     void *aux;
     uint8_t fanout;
-    uint8_t maxLayer;
+    uint8_t max_layer;
 } skiplist_raw;
 
 #ifndef _get_entry
