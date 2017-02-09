@@ -73,6 +73,8 @@ skiplist_insert(&list, &node->snode);
 
 * Insert ```{2, 20}``` pair
 ```C
+struct kv_node *node;
+
 node = (struct kv_node*)malloc(sizeof(struct kv_node));
 skiplist_init_node(&node->snode);
 
@@ -84,6 +86,7 @@ skiplist_insert(&list, &node->snode);
 * Find the value corresponding to key ```1```
 ```C
 struct kv_node query;
+struct kv_node *node;
 skiplist_node *cursor;
 
 query.key = 1;
@@ -96,6 +99,9 @@ printf("%d\n", node->value);    // it will display 10
 
 * Iteration
 ```C
+struct kv_node *node;
+skiplist_node *cursor;
+
 cursor = skiplist_begin(&list);
 while (cursor) {
     // get 'node' from 'cursor'
@@ -110,6 +116,10 @@ while (cursor) {
 
 * Remove the key-value pair corresponding to key ```1```
 ```C
+struct kv_node query;
+struct kv_node *node;
+skiplist_node *cursor;
+
 query.key = 1;
 cursor = skiplist_find(&list, &query.snode);
 if (cursor) {
@@ -123,3 +133,11 @@ if (cursor) {
     free(node);
 }
 ```
+
+Benchmark results
+-----------------
+* Skiplist vs. STL set + STL mutex
+* Single writer and multiple readers
+* Randomly insert and read 100K integers
+
+![alt text](https://github.com/greensky00/skiplist/blob/master/docs/swmr_graph.png "Throughput")
