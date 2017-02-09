@@ -43,11 +43,11 @@
 #if defined(_STL_ATOMIC) && defined(__cplusplus)
     // C++ (STL) atomic operations
     #define MOR std::memory_order_relaxed
-    #define ATM_LOAD(var, val) val = (var).load(MOR)
-    #define ATM_STORE(var, val) (var).store(val, MOR)
-    #define ATM_CAS(var, exp, val) (var).compare_exchange_weak(exp, val)
-    #define ALLOC_NODE_PTR(var, count) var = new atm_node_ptr[count]
-    #define FREE_NODE_PTR(var) delete[] var
+    #define ATM_LOAD(var, val)          (val) = (var).load(MOR)
+    #define ATM_STORE(var, val)         (var).store((val), MOR)
+    #define ATM_CAS(var, exp, val)      (var).compare_exchange_weak((exp), (val))
+    #define ALLOC_NODE_PTR(var, count)  (var) = new atm_node_ptr[count]
+    #define FREE_NODE_PTR(var)          delete[] (var)
 #else
     // C-style atomic operations
     #ifndef __cplusplus
@@ -63,13 +63,13 @@
     #endif
 
     #define MOR __ATOMIC_RELAXED
-    #define ATM_LOAD(var, val) __atomic_load(&var, &val, MOR)
-    #define ATM_STORE(var, val) __atomic_store(&var, &val, MOR)
-    #define ATM_CAS(var, exp, val)                                   \
-            __atomic_compare_exchange(&var, &exp, &val, 1, MOR, MOR)
-    #define ALLOC_NODE_PTR(var, count)                               \
-            var = (atm_node_ptr*)calloc(count, sizeof(atm_node_ptr))
-    #define FREE_NODE_PTR(var) free(var)
+    #define ATM_LOAD(var, val)          __atomic_load(&(var), &(val), MOR)
+    #define ATM_STORE(var, val)         __atomic_store(&(var), &(val), MOR)
+    #define ATM_CAS(var, exp, val)      \
+            __atomic_compare_exchange(&(var), &(exp), &(val), 1, MOR, MOR)
+    #define ALLOC_NODE_PTR(var, count)  \
+            (var) = (atm_node_ptr*)calloc(count, sizeof(atm_node_ptr))
+    #define FREE_NODE_PTR(var)          free(var)
 #endif
 
 static inline void _sl_node_init(skiplist_node *node,
@@ -281,12 +281,12 @@ insert_retry:
             skiplist_node *next_node = _sl_next(slist, cur_node, cur_layer);
             cmp = _sl_cmp(slist, node, next_node);
             if (cmp > 0) {
-                // next_node < node
+                // cur_node < next_node < node
                 // => move to next node
                 cur_node = next_node;
                 continue;
             }
-            // otherwise: node <= next_node
+            // otherwise: cur_node < node <= next_node
 
             if (cur_layer <= top_layer) {
                 prevs[cur_layer] = cur_node;
@@ -303,12 +303,13 @@ insert_retry:
                 if (cur_layer < top_layer &&
                     prevs[cur_layer] == prevs[cur_layer+1]) {
                     // duplicate
-                    // => which means that 'beingModified' flag is already true
+                    // => which means that 'being_modified' flag is already true
                     // => do nothing
                 } else {
                     bool expected = false;
                     bool_val = true;
-                    if (ATM_CAS(prevs[cur_layer]->being_modified, expected, bool_val)) {
+                    if (ATM_CAS(prevs[cur_layer]->being_modified,
+                                expected, bool_val)) {
                         locked_layer = cur_layer;
                     } else {
                         error_code = -1;
@@ -361,9 +362,24 @@ insert_retry:
     }
 }
 
-skiplist_node* skiplist_find(skiplist_raw *slist,
-                            skiplist_node *query)
+typedef enum {
+    SM = -2,
+    SMEQ = -1,
+    EQ = 0,
+    GTEQ = 1,
+    GT = 2
+} _sl_find_mode;
+
+static inline skiplist_node* _sl_find(skiplist_raw *slist,
+                                      skiplist_node *query,
+                                      _sl_find_mode mode)
 {
+    // mode:
+    //  SM   -2: smaller
+    //  SMEQ -1: smaller or equal
+    //  EQ    0: equal
+    //  GTEQ  1: greater or equal
+    //  GT    2: greater
     int cmp = 0;
     int cur_layer = 0;
     skiplist_node *cur_node = &slist->head;
@@ -373,22 +389,30 @@ skiplist_node* skiplist_find(skiplist_raw *slist,
             skiplist_node *next_node = _sl_next(slist, cur_node, cur_layer);
             cmp = _sl_cmp(slist, query, next_node);
             if (cmp > 0) {
-                // next_node < query
+                // cur_node < next_node < query
                 // => move to next node
                 cur_node = next_node;
                 continue;
-            } else if (cmp == 0) {
-                // query == next_node .. return
+            } else if (-1 <= mode && mode <= 1 && cmp == 0) {
+                // cur_node < query == next_node .. return
                 return next_node;
             }
 
-            // query < next_node
+            // otherwise: cur_node < query < next_node
             if (cur_layer) {
                 // non-bottom layer => go down
                 break;
             }
 
-            // bottom layer => means that exact match doesn't exist.
+            // bottom layer
+            if (mode < 0 && cur_node != &slist->head) {
+                // smaller mode
+                return cur_node;
+            } else if (mode > 0 && next_node != &slist->tail) {
+                // greater mode
+                return next_node;
+            }
+            // otherwise: exact match mode OR not found
             return NULL;
 
         } while (cur_node != &slist->tail);
@@ -397,37 +421,22 @@ skiplist_node* skiplist_find(skiplist_raw *slist,
     return NULL;
 }
 
-skiplist_node* skiplist_find_smaller(skiplist_raw *slist,
-                                    skiplist_node *query)
+skiplist_node* skiplist_find(skiplist_raw *slist,
+                             skiplist_node *query)
 {
-    int cmp = 0;
-    int cur_layer = 0;
-    skiplist_node *cur_node = &slist->head;
+    return _sl_find(slist, query, EQ);
+}
 
-    for (cur_layer = slist->max_layer-1; cur_layer >= 0; --cur_layer) {
-        do {
-            skiplist_node *next_node = _sl_next(slist, cur_node, cur_layer);
-            cmp = _sl_cmp(slist, query, next_node);
-            if (cmp > 0) {
-                // next_node < query
-                // => move to next node
-                cur_node = next_node;
-                continue;
-            }
+skiplist_node* skiplist_find_smaller_or_equal(skiplist_raw *slist,
+                                              skiplist_node *query)
+{
+    return _sl_find(slist, query, SMEQ);
+}
 
-            // otherwise: query <= next_node
-            if (cur_layer) {
-                // non-bottom layer => go down
-                break;
-            }
-
-            // bottom layer => return cur_node
-            return cur_node;
-
-        } while (cur_node != &slist->tail);
-    }
-
-    return NULL;
+skiplist_node* skiplist_find_greater_or_equal(skiplist_raw *slist,
+                                              skiplist_node *query)
+{
+    return _sl_find(slist, query, GTEQ);
 }
 
 int skiplist_erase_node(skiplist_raw *slist,
@@ -476,16 +485,16 @@ erase_node_retry:
 
             cmp = _sl_cmp(slist, node, next_node);
             if (cmp > 0) {
-                // 'next_node' < 'node'
+                // cur_node < next_node < node
                 // => move to next node
                 cur_node = next_node;
                 continue;
             }
-            // otherwise: 'node' <= 'next_node'
+            // otherwise: cur_node < node <= next_node
 
             if (cur_layer <= top_layer) {
                 prevs[cur_layer] = cur_node;
-                // note: 'next_node' should not be 'node',
+                // note: 'next_node' and 'node' should not be the node,
                 //       as 'removed' flag is already set.
                 __SLD_ASSERT(next_node != node);
                 nexts[cur_layer] = next_node;
@@ -496,12 +505,13 @@ erase_node_retry:
                 if (cur_layer < top_layer &&
                     prevs[cur_layer] == prevs[cur_layer+1]) {
                     // duplicate with upper layer
-                    // => which means that 'beingModified' flag is already true
+                    // => which means that 'being_modified' flag is already true
                     // => do nothing.
                 } else {
                     expected = false;
                     bool_val = true;
-                    if (ATM_CAS(prevs[cur_layer]->being_modified, expected, bool_val)) {
+                    if (ATM_CAS(prevs[cur_layer]->being_modified,
+                                expected, bool_val)) {
                         locked_layer = cur_layer;
                     } else {
                         error_code = -1;
@@ -569,7 +579,7 @@ int skiplist_erase(skiplist_raw *slist,
 }
 
 skiplist_node* skiplist_next(skiplist_raw *slist,
-                            skiplist_node *node) {
+                             skiplist_node *node) {
     skiplist_node *next = _sl_next(slist, node, 0);
     if (next == &slist->tail) {
         return NULL;
@@ -578,8 +588,8 @@ skiplist_node* skiplist_next(skiplist_raw *slist,
 }
 
 skiplist_node* skiplist_prev(skiplist_raw *slist,
-                            skiplist_node *node) {
-    skiplist_node *prev = skiplist_find_smaller(slist, node);
+                             skiplist_node *node) {
+    skiplist_node *prev = _sl_find(slist, node, SM);
     if (prev == &slist->head) {
         return NULL;
     }

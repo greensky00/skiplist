@@ -181,7 +181,7 @@ void find_test()
     printf("insert %.4f (%.1f ops/sec)\n",
            elapsed_seconds.count(), n/elapsed_seconds.count());
 
-    // find exact match key
+    // ==== find exact match key
     IntNode query, *item;
     skiplist_node *ret;
 
@@ -198,12 +198,53 @@ void find_test()
     printf("find (existing key) done: %.4f (%.1f ops/sec)\n",
            elapsed_seconds.count(), n/elapsed_seconds.count());
 
-    // find non-existing key
+    // ==== find smaller key
+    start = std::chrono::system_clock::now();
+
+    // smaller than smallest key
+    query.value = -5;
+    ret = skiplist_find_smaller_or_equal(&list, &query.snode);
+    assert(ret == NULL);
+
+    for (i=0; i<n; ++i) {
+        query.value = i*10 + 5;
+        ret = skiplist_find_smaller_or_equal(&list, &query.snode);
+        assert(ret);
+        item = _get_entry(ret, IntNode, snode);
+        assert(item->value == i*10);
+    }
+    end = std::chrono::system_clock::now();
+    elapsed_seconds = end-start;
+    printf("find (smaller key) done: %.4f (%.1f ops/sec)\n",
+           elapsed_seconds.count(), n/elapsed_seconds.count());
+
+    // ==== find greater key
+    start = std::chrono::system_clock::now();
+
+    for (i=0; i<n; ++i) {
+        query.value = i*10 - 5;
+        ret = skiplist_find_greater_or_equal(&list, &query.snode);
+        assert(ret);
+        item = _get_entry(ret, IntNode, snode);
+        assert(item->value == i*10);
+    }
+
+    // greater than greatest key
+    query.value = i*10;
+    ret = skiplist_find_greater_or_equal(&list, &query.snode);
+    assert(ret == NULL);
+
+    end = std::chrono::system_clock::now();
+    elapsed_seconds = end-start;
+    printf("find (greater key) done: %.4f (%.1f ops/sec)\n",
+           elapsed_seconds.count(), n/elapsed_seconds.count());
+
+    // ==== find non-existing key
     start = std::chrono::system_clock::now();
     for (i=0; i<n; ++i) {
         query.value = i*10 + 1;
         ret = skiplist_find(&list, &query.snode);
-        assert(ret == nullptr);
+        assert(ret == NULL);
     }
     end = std::chrono::system_clock::now();
     elapsed_seconds = end-start;

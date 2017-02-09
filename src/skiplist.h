@@ -37,11 +37,11 @@ struct _skiplist_node;
 #define _STL_ATOMIC (1)
 #if defined(_STL_ATOMIC) && defined(__cplusplus)
     #include <atomic>
-    typedef std::atomic<_skiplist_node*> atm_node_ptr;
-    typedef std::atomic<bool> atm_bool;
+    typedef std::atomic<_skiplist_node*>   atm_node_ptr;
+    typedef std::atomic<bool>              atm_bool;
 #else
-    typedef struct _skiplist_node* atm_node_ptr;
-    typedef uint8_t atm_bool;
+    typedef struct _skiplist_node*         atm_node_ptr;
+    typedef uint8_t                        atm_bool;
 #endif
 
 #ifdef __cplusplus
@@ -101,10 +101,13 @@ void skiplist_insert(skiplist_raw *slist,
                      skiplist_node *node);
 
 skiplist_node* skiplist_find(skiplist_raw *slist,
-                            skiplist_node *query);
+                             skiplist_node *query);
 
-skiplist_node* skiplist_find_smaller(skiplist_raw *slist,
-                                    skiplist_node *query);
+skiplist_node* skiplist_find_smaller_or_equal(skiplist_raw *slist,
+                                              skiplist_node *query);
+
+skiplist_node* skiplist_find_greater_or_equal(skiplist_raw *slist,
+                                              skiplist_node *query);
 
 int skiplist_erase_node(skiplist_raw *slist,
                         skiplist_node *node);
@@ -113,10 +116,10 @@ int skiplist_erase(skiplist_raw *slist,
                    skiplist_node *query);
 
 skiplist_node* skiplist_next(skiplist_raw *slist,
-                            skiplist_node *node);
+                             skiplist_node *node);
 
 skiplist_node* skiplist_prev(skiplist_raw *slist,
-                            skiplist_node *node);
+                             skiplist_node *node);
 
 skiplist_node* skiplist_begin(skiplist_raw *slist);
 
