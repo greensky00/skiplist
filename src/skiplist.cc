@@ -42,7 +42,7 @@
 
 #if defined(_STL_ATOMIC) && defined(__cplusplus)
     // C++ (STL) atomic operations
-    #define MOR std::memory_order_relaxed
+    #define MOR                         std::memory_order_relaxed
     #define ATM_LOAD(var, val)          (val) = (var).load(MOR)
     #define ATM_STORE(var, val)         (var).store((val), MOR)
     #define ATM_CAS(var, exp, val)      (var).compare_exchange_weak((exp), (val))
@@ -62,7 +62,7 @@
         #endif
     #endif
 
-    #define MOR __ATOMIC_RELAXED
+    #define MOR                         __ATOMIC_RELAXED
     #define ATM_LOAD(var, val)          __atomic_load(&(var), &(val), MOR)
     #define ATM_STORE(var, val)         __atomic_store(&(var), &(val), MOR)
     #define ATM_CAS(var, exp, val)      \
