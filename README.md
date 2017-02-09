@@ -51,50 +51,75 @@ int cmp_func(skiplist_node *a, skiplist_node *b, void *aux)
 ```
 
 Example code:
-```C
-// initialize skiplist
-skiplist_raw list;
-skiplist_init(&list, cmp_func);
 
-// insert {1, 10} pair
+* Initialize a Skiplist
+```C
+skiplist_raw list;
+
+skiplist_init(&list, cmp_func);
+```
+
+* Insert ```{1, 10}``` pair
+```C
 struct kv_node *node;
+
 node = (struct kv_node*)malloc(sizeof(struct kv_node));
 skiplist_init_node(&node->snode);
+
 node->key = 1;
 node->value = 10;
 skiplist_insert(&list, &node->snode);
+```
 
-// insert {2, 20} pair
+* Insert ```{2, 20}``` pair
+```C
 node = (struct kv_node*)malloc(sizeof(struct kv_node));
 skiplist_init_node(&node->snode);
+
 node->key = 2;
 node->value = 20;
 skiplist_insert(&list, &node->snode);
+```
 
-// find the value corresponding to key '1'
+* Find the value corresponding to key ```1```
+```C
 struct kv_node query;
 skiplist_node *cursor;
+
 query.key = 1;
 cursor = skiplist_find(&list, &query.snode);
+
 // get 'node' from 'cursor'
 node = _get_entry(cursor, struct kv_node, snode);
 printf("%d\n", node->value);    // it will display 10
+```
 
-// iteration
+* Iteration
+```C
 cursor = skiplist_begin(&list);
 while (cursor) {
+    // get 'node' from 'cursor'
     node = _get_entry(cursor, struct kv_node, snode);
+
     // ... do something with 'node' ...
+
+    // get next cursor
     cursor = skiplist_next(&list, cur);
 }
+```
 
-// remove the pair corresponding to key '1'
+* Remove the key-value pair corresponding to key ```1```
+```C
 query.key = 1;
 cursor = skiplist_find(&list, &query.snode);
 if (cursor) {
+    // get 'node' from 'cursor'
     node = _get_entry(cursor, struct kv_node, snode);
+    // remove from list
     skiplist_erase_node(&list, cursor);
+    // free 'cursor' (i.e., node->snode)
     skiplist_free_node(cursor);
+    // free 'node'
     free(node);
 }
 ```
