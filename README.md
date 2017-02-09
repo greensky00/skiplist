@@ -1,2 +1,100 @@
-# skiplist
-A lightweight generic Skiplist container, lock-free for both multiple readers and writers.
+Skiplist
+--------
+A generic Skiplist container C implementation, lock free for both multiple readers and writers. It can be used as a set or a map, containing any type of data.
+
+It basically uses STL atomic variables with C++ compiler, but they can be switched to built-in GCC atomic operations when we compile it with pure C compiler.
+
+
+
+Author
+------
+Jung-Sang Ahn <jungsang.ahn@gmail.com>
+
+
+Build
+-----
+```sh
+$ make
+```
+
+
+How to use
+----------
+(refer to ```tests/skiplist_test.cc```)
+
+Below example describes how to use Skiplist as an ordered map of integer pairs.
+
+We define a node for an integer pair, and a comparison function of given two nodes:
+```C
+#include "skiplist.h"
+
+struct kv_node{
+    skiplist_node snode;
+    // put your data here
+    int key;
+    int value;
+};
+
+int cmp_func(skiplist_node *a, skiplist_node *b, void *aux)
+{
+    struct kv_node *aa, *bb;
+    aa = _get_entry(a, struct kv_node, snode);
+    bb = _get_entry(b, struct kv_node, snode);
+
+    if (aa->key < bb->key)
+        return -1;
+    else if (aa->key > bb->key)
+        return 1;
+    else
+        return 0;
+}
+```
+
+Example code:
+```C
+// initialize skiplist
+skiplist_raw list;
+skiplist_init(&list, cmp_func);
+
+// insert {1, 10} pair
+struct kv_node *node;
+node = (struct kv_node*)malloc(sizeof(struct kv_node));
+skiplist_init_node(&node->snode);
+node->key = 1;
+node->value = 10;
+skiplist_insert(&list, &node->snode);
+
+// insert {2, 20} pair
+node = (struct kv_node*)malloc(sizeof(struct kv_node));
+skiplist_init_node(&node->snode);
+node->key = 2;
+node->value = 20;
+skiplist_insert(&list, &node->snode);
+
+// find the value corresponding to key '1'
+struct kv_node query;
+skiplist_node *cursor;
+query.key = 1;
+cursor = skiplist_find(&list, &query.snode);
+// get 'node' from 'cursor'
+node = _get_entry(cursor, struct kv_node, snode);
+printf("%d\n", node->value);    // it will display 10
+
+// iteration
+cursor = skiplist_begin(&list);
+while (cursor) {
+    node = _get_entry(cursor, struct kv_node, snode);
+    // ... do something with 'node' ...
+    cursor = skiplist_next(&list, cur);
+}
+
+// remove the pair corresponding to key '1'
+query.key = 1;
+cursor = skiplist_find(&list, &query.snode);
+if (cursor) {
+    node = _get_entry(cursor, struct kv_node, snode);
+    skiplist_erase_node(&list, cursor);
+    skiplist_free_node(cursor);
+    free(node);
+}
+```
