@@ -104,7 +104,7 @@ while (cursor) {
     // ... do something with 'node' ...
 
     // get next cursor
-    cursor = skiplist_next(&list, cur);
+    cursor = skiplist_next(&list, cursor);
 }
 ```
 
