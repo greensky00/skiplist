@@ -1,6 +1,6 @@
 Skiplist
 --------
-A generic Skiplist container C implementation, lock free for both multiple readers and writers. It can be used as a set or a map, containing any type of data.
+A generic Skiplist container C implementation, lock-free for both multiple readers and writers. It can be used as a set or a map, containing any type of data.
 
 It basically uses STL atomic variables with C++ compiler, but they can be switched to built-in GCC atomic operations when we compile it with pure C compiler.
 
@@ -134,10 +134,10 @@ if (cursor) {
 }
 ```
 
-Benchmark results
+Simple benchmark results
 -----------------
-* Skiplist vs. STL set + STL mutex
-* Single writer and multiple readers
-* Randomly insert and read 100K integers
+* Skiplist vs. STL set + STL mutex.
+* Total 100K keys initially.
+* Multiple readers (1 -- 8 threads) randomly read existing keys while a single writer is randomly inserting new keys.
 
 ![alt text](https://github.com/greensky00/skiplist/blob/master/docs/swmr_graph.png "Throughput")
