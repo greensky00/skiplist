@@ -1,6 +1,6 @@
 Skiplist
 --------
-A generic Skiplist container C implementation, lock-free for both multiple readers and writers. It can be used as a set or a map, containing any type of data.
+A generic Skiplist container C implementation, lock free for both multiple readers and writers. It can be used as a set or a map, containing any type of data.
 
 It basically uses STL atomic variables with C++ compiler, but they can be switched to built-in GCC atomic operations when we compile it with pure C compiler.
 
@@ -95,6 +95,10 @@ cursor = skiplist_find(&list, &query.snode);
 // get 'node' from 'cursor'
 node = _get_entry(cursor, struct kv_node, snode);
 printf("%d\n", node->value);    // it will display 10
+
+// release 'cursor',
+// to allow concurrent thread to erase this node
+skiplist_release_node(cursor);
 ```
 
 * Iteration
@@ -111,7 +115,12 @@ while (cursor) {
 
     // get next cursor
     cursor = skiplist_next(&list, cursor);
+    // release current 'node' (i.e., previous 'cursor')
+    skiplist_release_node(&node->snode);
 }
+// release the last cursor
+if (cursor)
+    skiplist_release_node(cursor);
 ```
 
 * Remove the key-value pair corresponding to key ```1```
@@ -127,17 +136,29 @@ if (cursor) {
     node = _get_entry(cursor, struct kv_node, snode);
     // remove from list
     skiplist_erase_node(&list, cursor);
-    // free 'cursor' (i.e., node->snode)
-    skiplist_free_node(cursor);
-    // free 'node'
-    free(node);
+    // release 'cursor'
+    skiplist_release_node(cursor);
+    // before free resources, do safety check
+    if (skiplist_is_safe_to_free(cursor)) {
+        // free 'cursor' (i.e., node->snode)
+        skiplist_free_node(cursor);
+        // free 'node', only when it is safe to free.
+        free(node);
+    } else {
+        // otherwise, 'cursor' is still being accessed
+        // by other concurrent thread.
+        // there are two options:
+        //  1) wait here until it becomes safe,
+        //     blocking the user (caller) thread.
+        //  2) free it in background.
+    }
 }
 ```
 
-Simple benchmark results
+Benchmark results
 -----------------
-* Skiplist vs. STL set + STL mutex.
-* Total 100K keys initially.
-* Multiple readers (1 -- 8 threads) randomly read existing keys while a single writer is randomly inserting new keys.
+* Skiplist vs. STL set + STL mutex
+* Single writer and multiple readers
+* Randomly insert and read 100K integers
 
 ![alt text](https://github.com/greensky00/skiplist/blob/master/docs/swmr_graph.png "Throughput")

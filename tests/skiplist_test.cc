@@ -26,8 +26,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <inttypes.h>
-
 #include <vector>
 #include <chrono>
 #include <ctime>
@@ -435,7 +433,7 @@ void concurrent_write_test(struct test_args t_args)
         IntNode *node = _get_entry(cur, IntNode, snode);
         if (node->value != count) {
             skiplist_node *missing = &arr[count].snode;
-            printf("idx %d is missing, %" PRIu64 "\n", count, (uint64_t)missing);
+            printf("idx %d is missing, %lx\n", count, (uint64_t)missing);
 
             skiplist_node *prev = skiplist_prev(&list, missing);
             skiplist_node *next = skiplist_next(&list, missing);
@@ -622,7 +620,7 @@ void concurrent_write_erase_test(struct test_args t_args)
         int idx = count * 10 + 5;
         if (node->value != idx) {
             skiplist_node *missing = &arr_add_dbgref[count]->snode;
-            printf("count %d, idx %d is missing %" PRIu64 "\n", count, idx, (uint64_t)missing);
+            printf("count %d, idx %d is missing %lx\n", count, idx, (uint64_t)missing);
 
             skiplist_node *prev = skiplist_prev(&list, missing);
             skiplist_node *next = skiplist_next(&list, missing);

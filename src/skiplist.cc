@@ -46,6 +46,8 @@
     #define ATM_LOAD(var, val)          (val) = (var).load(MOR)
     #define ATM_STORE(var, val)         (var).store((val), MOR)
     #define ATM_CAS(var, exp, val)      (var).compare_exchange_weak((exp), (val))
+    #define ATM_FETCH_ADD(var, val)     (var).fetch_add(val, MOR)
+    #define ATM_FETCH_SUB(var, val)     (var).fetch_sub(val, MOR)
     #define ALLOC_NODE_PTR(var, count)  (var) = new atm_node_ptr[count]
     #define FREE_NODE_PTR(var)          delete[] (var)
 #else
@@ -67,6 +69,8 @@
     #define ATM_STORE(var, val)         __atomic_store(&(var), &(val), MOR)
     #define ATM_CAS(var, exp, val)      \
             __atomic_compare_exchange(&(var), &(exp), &(val), 1, MOR, MOR)
+    #define ATM_FETCH_ADD(var, val)     __atomic_fetch_add(&(var), (val), MOR)
+    #define ATM_FETCH_SUB(var, val)     __atomic_fetch_sub(&(var), (val), MOR)
     #define ALLOC_NODE_PTR(var, count)  \
             (var) = (atm_node_ptr*)calloc(count, sizeof(atm_node_ptr))
     #define FREE_NODE_PTR(var)          free(var)
@@ -135,12 +139,14 @@ void skiplist_init_node(skiplist_node *node)
 {
     node->next = NULL;
 
-    bool bool_val = false;
-    ATM_STORE(node->is_fully_linked, bool_val);
-    ATM_STORE(node->being_modified, bool_val);
-    ATM_STORE(node->removed, bool_val);
+    bool bool_false = false;
+    ATM_STORE(node->is_fully_linked, bool_false);
+    ATM_STORE(node->being_modified, bool_false);
+    ATM_STORE(node->removed, bool_false);
+    ATM_STORE(node->accessing_next, bool_false);
 
     node->top_layer = 0;
+    node->ref_count = 0;
 }
 
 void skiplist_free_node(skiplist_node *node)
@@ -202,14 +208,34 @@ static inline bool _sl_valid_node(skiplist_node *node) {
     return !removed && is_fully_linked;
 }
 
+// Note: it increases the `ref_count` of returned node.
+//       Caller is responsible to decrease it.
 static inline skiplist_node* _sl_next(skiplist_raw *slist,
-                                     skiplist_node *cur_node,
-                                     int layer)
+                                      skiplist_node *cur_node,
+                                      int layer)
 {
     skiplist_node *next_node = NULL;
-    ATM_LOAD(cur_node->next[layer], next_node);
+    bool bool_true = true;
+    bool bool_false = false;
+
+    // Turn on `accessing_next`:
+    // now `cur_node` is not removable from skiplist,
+    // which means that `cur_node->next` will be consistent
+    // until clearing `accessing_next`.
+    ATM_STORE(cur_node->accessing_next, bool_true);
+      ATM_LOAD(cur_node->next[layer], next_node);
+      // Increase ref count of `next_node`:
+      // now `next_node` is not destroyable.
+      if (next_node) ATM_FETCH_ADD(next_node->ref_count, 1);
+    ATM_STORE(cur_node->accessing_next, bool_false);
+
     while ( next_node && !_sl_valid_node(next_node) ) {
-        ATM_LOAD(next_node->next[layer], next_node);
+        skiplist_node* temp = next_node;
+        ATM_STORE(temp->accessing_next, bool_true);
+          ATM_LOAD(temp->next[layer], next_node);
+          if (next_node) ATM_FETCH_ADD(next_node->ref_count, 1);
+        ATM_STORE(temp->accessing_next, bool_false);
+        ATM_FETCH_SUB(temp->ref_count, 1);
     }
     return next_node;
 }
@@ -259,10 +285,11 @@ void skiplist_insert(skiplist_raw *slist,
                      skiplist_node *node)
 {
     int top_layer = _sl_decide_top_layer(slist);
-    bool bool_val = true;
+    bool bool_true = true, bool_false = false;
 
     // init node before insertion
     _sl_node_init(node, top_layer);
+    ATM_STORE(node->accessing_next, bool_true);
 
     skiplist_node* prevs[SKIPLIST_MAX_LAYER];
     skiplist_node* nexts[SKIPLIST_MAX_LAYER];
@@ -271,10 +298,9 @@ insert_retry:
     // in pure C, a label can only be part of a stmt.
     (void)top_layer;
 
-    int cmp = 0;
-    int cur_layer = 0;
-    int layer;
+    int cmp = 0, cur_layer = 0, layer;
     skiplist_node *cur_node = &slist->head;
+    ATM_FETCH_ADD(cur_node->ref_count, 1);
 
     for (cur_layer = slist->max_layer-1; cur_layer >= 0; --cur_layer) {
         do {
@@ -283,15 +309,18 @@ insert_retry:
             if (cmp > 0) {
                 // cur_node < next_node < node
                 // => move to next node
+                skiplist_node* temp = cur_node;
                 cur_node = next_node;
+                ATM_FETCH_SUB(temp->ref_count, 1);
                 continue;
+            } else {
+                // otherwise: cur_node < node <= next_node
+                ATM_FETCH_SUB(next_node->ref_count, 1);
             }
-            // otherwise: cur_node < node <= next_node
 
             if (cur_layer <= top_layer) {
                 prevs[cur_layer] = cur_node;
                 nexts[cur_layer] = next_node;
-
                 // both 'prev' and 'next' should be fully linked before
                 // insertion, and no other thread should not modify 'prev'
                 // at the same time.
@@ -307,9 +336,8 @@ insert_retry:
                     // => do nothing
                 } else {
                     bool expected = false;
-                    bool_val = true;
                     if (ATM_CAS(prevs[cur_layer]->being_modified,
-                                expected, bool_val)) {
+                                expected, bool_true)) {
                         locked_layer = cur_layer;
                     } else {
                         error_code = -1;
@@ -324,17 +352,22 @@ insert_retry:
                 if (error_code != 0) {
                     __SLD_RT_INS(error_code, node, top_layer, cur_layer);
                     _sl_clr_flags(prevs, locked_layer, top_layer);
+                    ATM_FETCH_SUB(cur_node->ref_count, 1);
                     goto insert_retry;
                 }
 
                 // set current node's pointers
                 ATM_STORE(node->next[cur_layer], nexts[cur_layer]);
 
-                if (_sl_next(slist, cur_node, cur_layer) != next_node) {
+                // check if `cur_node->next` has been changed from `next_node`.
+                skiplist_node* next_node_again = _sl_next(slist, cur_node, cur_layer);
+                ATM_FETCH_SUB(next_node_again->ref_count, 1);
+                if (next_node_again != next_node) {
                     __SLD_NC_INS(cur_node, next_node, top_layer, cur_layer);
                     // clear including the current layer
                     // as we already set modification flag above.
                     _sl_clr_flags(prevs, cur_layer, top_layer);
+                    ATM_FETCH_SUB(cur_node->ref_count, 1);
                     goto insert_retry;
                 }
             }
@@ -351,13 +384,15 @@ insert_retry:
             }
 
             // now this node is fully linked
-            bool_val = true;
-            ATM_STORE(node->is_fully_linked, bool_val);
+            ATM_STORE(node->is_fully_linked, bool_true);
+
+            // allow removing next nodes
+            ATM_STORE(node->accessing_next, bool_false);
 
             // modification is done for all layers
             _sl_clr_flags(prevs, 0, top_layer);
+            ATM_FETCH_SUB(cur_node->ref_count, 1);
             return;
-
         } while (cur_node != &slist->tail);
     }
 }
@@ -370,6 +405,8 @@ typedef enum {
     GT = 2
 } _sl_find_mode;
 
+// Note: it increases the `ref_count` of returned node.
+//       Caller is responsible to decrease it.
 static inline skiplist_node* _sl_find(skiplist_raw *slist,
                                       skiplist_node *query,
                                       _sl_find_mode mode)
@@ -383,6 +420,7 @@ static inline skiplist_node* _sl_find(skiplist_raw *slist,
     int cmp = 0;
     int cur_layer = 0;
     skiplist_node *cur_node = &slist->head;
+    ATM_FETCH_ADD(cur_node->ref_count, 1);
 
     for (cur_layer = slist->max_layer-1; cur_layer >= 0; --cur_layer) {
         do {
@@ -391,30 +429,37 @@ static inline skiplist_node* _sl_find(skiplist_raw *slist,
             if (cmp > 0) {
                 // cur_node < next_node < query
                 // => move to next node
+                skiplist_node* temp = cur_node;
                 cur_node = next_node;
+                ATM_FETCH_SUB(temp->ref_count, 1);
                 continue;
             } else if (-1 <= mode && mode <= 1 && cmp == 0) {
                 // cur_node < query == next_node .. return
+                ATM_FETCH_SUB(cur_node->ref_count, 1);
                 return next_node;
             }
 
             // otherwise: cur_node < query < next_node
             if (cur_layer) {
                 // non-bottom layer => go down
+                ATM_FETCH_SUB(next_node->ref_count, 1);
                 break;
             }
 
             // bottom layer
             if (mode < 0 && cur_node != &slist->head) {
                 // smaller mode
+                ATM_FETCH_SUB(next_node->ref_count, 1);
                 return cur_node;
             } else if (mode > 0 && next_node != &slist->tail) {
                 // greater mode
+                ATM_FETCH_SUB(cur_node->ref_count, 1);
                 return next_node;
             }
             // otherwise: exact match mode OR not found
+            ATM_FETCH_SUB(cur_node->ref_count, 1);
+            ATM_FETCH_SUB(next_node->ref_count, 1);
             return NULL;
-
         } while (cur_node != &slist->tail);
     }
 
@@ -443,7 +488,7 @@ int skiplist_erase_node(skiplist_raw *slist,
                         skiplist_node *node)
 {
     int top_layer = node->top_layer;
-    bool bool_val = true;
+    bool bool_true = true, bool_false = false;
     bool removed = false;
     bool is_fully_linked = false;
 
@@ -457,16 +502,14 @@ int skiplist_erase_node(skiplist_raw *slist,
     skiplist_node* nexts[SKIPLIST_MAX_LAYER];
 
     bool expected = false;
-    bool_val = true;
-    if (!ATM_CAS(node->being_modified, expected, bool_val)) {
+    if (!ATM_CAS(node->being_modified, expected, bool_true)) {
         // already being modified .. fail
         __SLD_BM(node);
         return -2;
     }
 
     // clear removed flag first, so that reader cannot read this node.
-    bool_val = true;
-    ATM_STORE(node->removed, bool_val);
+    ATM_STORE(node->removed, bool_true);
 
 erase_node_retry:
     ATM_LOAD(node->is_fully_linked, is_fully_linked);
@@ -478,23 +521,27 @@ erase_node_retry:
     int cmp = 0;
     int cur_layer = slist->max_layer - 1;
     skiplist_node *cur_node = &slist->head;
+    ATM_FETCH_ADD(cur_node->ref_count, 1);
 
     for (; cur_layer >= 0; --cur_layer) {
         do {
             skiplist_node *next_node = _sl_next(slist, cur_node, cur_layer);
-
             cmp = _sl_cmp(slist, node, next_node);
             if (cmp > 0) {
                 // cur_node < next_node < node
                 // => move to next node
+                skiplist_node* temp = cur_node;
                 cur_node = next_node;
+                ATM_FETCH_SUB(temp->ref_count, 1);
                 continue;
+            } else {
+                // otherwise: cur_node < node <= next_node
+                ATM_FETCH_SUB(next_node->ref_count, 1);
             }
-            // otherwise: cur_node < node <= next_node
 
             if (cur_layer <= top_layer) {
                 prevs[cur_layer] = cur_node;
-                // note: 'next_node' and 'node' should not be the node,
+                // note: 'next_node' and 'node' should not be the same,
                 //       as 'removed' flag is already set.
                 __SLD_ASSERT(next_node != node);
                 nexts[cur_layer] = next_node;
@@ -509,9 +556,8 @@ erase_node_retry:
                     // => do nothing.
                 } else {
                     expected = false;
-                    bool_val = true;
                     if (ATM_CAS(prevs[cur_layer]->being_modified,
-                                expected, bool_val)) {
+                                expected, bool_true)) {
                         locked_layer = cur_layer;
                     } else {
                         error_code = -1;
@@ -526,19 +572,22 @@ erase_node_retry:
                 if (error_code != 0) {
                     __SLD_RT_RMV(error_code, node, top_layer, cur_layer);
                     _sl_clr_flags(prevs, locked_layer, top_layer);
+                    ATM_FETCH_SUB(cur_node->ref_count, 1);
                     goto erase_node_retry;
                 }
 
-                if (_sl_next(slist, cur_node, cur_layer) != nexts[cur_layer]) {
+                skiplist_node* next_node_again = _sl_next(slist, cur_node, cur_layer);
+                ATM_FETCH_SUB(next_node_again->ref_count, 1);
+                if (next_node_again != nexts[cur_layer]) {
                     __SLD_NC_RMV(cur_node, nexts[cur_layer], top_layer, cur_layer);
                     _sl_clr_flags(prevs, cur_layer, top_layer);
+                    ATM_FETCH_SUB(cur_node->ref_count, 1);
                     goto erase_node_retry;
                 }
             }
 
             // go down
             break;
-
         } while (cur_node != &slist->tail);
     }
 
@@ -549,14 +598,22 @@ erase_node_retry:
     }
 
     // now this node is unlinked
-    bool_val = false;
-    ATM_STORE(node->is_fully_linked, bool_val);
+    ATM_STORE(node->is_fully_linked, bool_false);
+
+    // do not return until all links are fully unreachable.
+    bool accessing_next = false;
+    do {
+        for (int i=0; i<=top_layer; ++i) {
+            ATM_LOAD(prevs[i]->accessing_next, accessing_next);
+            if (accessing_next) break;
+        }
+    } while (accessing_next);
 
     // modification is done for all layers
     _sl_clr_flags(prevs, 0, top_layer);
+    ATM_FETCH_SUB(cur_node->ref_count, 1);
 
-    bool_val = false;
-    ATM_STORE(node->being_modified, bool_val);
+    ATM_STORE(node->being_modified, bool_false);
     return 0;
 }
 
@@ -575,7 +632,25 @@ int skiplist_erase(skiplist_raw *slist,
         // if ret == -2, other thread is accessing the same node
         // at the same time. try again.
     } while (ret == -2);
+
+    ATM_FETCH_SUB(found->ref_count, 1);
     return ret;
+}
+
+int skiplist_is_safe_to_free(skiplist_node* node) {
+    if (node->accessing_next) return 0;
+    if (node->being_modified) return 0;
+    if (!node->removed) return 0;
+
+    uint16_t ref_count = 0;
+    ATM_LOAD(node->ref_count, ref_count);
+    if (ref_count) return 0;
+    return 1;
+}
+
+// Decrease reference count.
+void skiplist_release_node(skiplist_node* node) {
+    ATM_FETCH_SUB(node->ref_count, 1);
 }
 
 skiplist_node* skiplist_next(skiplist_raw *slist,
