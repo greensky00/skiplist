@@ -133,16 +133,14 @@ int itr_write_erase() {
         skiplist_insert(&slist, &node[ii]->snode);
     }
     for (int ii=0; ii<num; ii+=1) {
-        if (node[ii]->snode.ref_count)
-            printf("%d %d\n", ii, node[ii]->snode.ref_count);
+        CHK_EQ(0, node[ii]->snode.ref_count);
     }
 
     for (int ii=0; ii<num; ii+=2) {
         skiplist_erase_node(&slist, &node[ii]->snode);
     }
     for (int ii=0; ii<num; ii+=1) {
-        if (node[ii]->snode.ref_count)
-            printf("%d %d\n", ii, node[ii]->snode.ref_count);
+        CHK_EQ(0, node[ii]->snode.ref_count);
     }
 
     args.slist = &slist;
@@ -155,8 +153,7 @@ int itr_write_erase() {
     writer.join();
 
     for (int ii=0; ii<num; ii+=1) {
-        if (node[ii]->snode.ref_count)
-            printf("%d %d\n", ii, node[ii]->snode.ref_count);
+        CHK_EQ(0, node[ii]->snode.ref_count);
     }
 
     skiplist_node* cursor = skiplist_begin(&slist);
