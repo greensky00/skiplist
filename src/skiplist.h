@@ -78,6 +78,7 @@ typedef struct {
     skiplist_node tail;
     skiplist_cmp_t *cmp_func;
     void *aux;
+    atm_uint32_t num_entries;
     uint8_t fanout;
     uint8_t max_layer;
 } skiplist_raw;
@@ -93,6 +94,8 @@ void skiplist_free(skiplist_raw* slist);
 
 void skiplist_init_node(skiplist_node* node);
 void skiplist_free_node(skiplist_node* node);
+
+size_t skiplist_get_size(skiplist_raw* slist);
 
 skiplist_raw_config skiplist_get_default_config();
 skiplist_raw_config skiplist_get_config(skiplist_raw* slist);

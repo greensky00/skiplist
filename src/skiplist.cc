@@ -111,6 +111,7 @@ void skiplist_init(skiplist_raw *slist,
     // for +17M items, complexity will grow linearly: O(k lg n).
     slist->fanout = 4;
     slist->max_layer = 12;
+    slist->num_entries = 0;
 
     skiplist_init_node(&slist->head);
     skiplist_init_node(&slist->tail);
@@ -153,6 +154,12 @@ void skiplist_init_node(skiplist_node *node)
 void skiplist_free_node(skiplist_node *node)
 {
     FREE_NODE_PTR(node->next);
+}
+
+size_t skiplist_get_size(skiplist_raw* slist) {
+    uint32_t val;
+    ATM_LOAD(slist->num_entries, val);
+    return val;
 }
 
 skiplist_raw_config skiplist_get_default_config()
@@ -464,6 +471,7 @@ insert_retry:
             // modification is done for all layers
             _sl_clr_flags(prevs, 0, top_layer);
             ATM_FETCH_SUB(cur_node->ref_count, 1);
+            ATM_FETCH_ADD(slist->num_entries, 1);
             return;
         } while (cur_node != &slist->tail);
     }
@@ -679,6 +687,7 @@ erase_node_retry:
     ATM_FETCH_SUB(cur_node->ref_count, 1);
 
     ATM_STORE(node->being_modified, bool_false);
+    ATM_FETCH_SUB(slist->num_entries, 1);
     return 0;
 }
 
@@ -714,9 +723,6 @@ int skiplist_erase(skiplist_raw *slist,
     return ret;
 }
 
-
-#include <assert.h>
-
 int skiplist_is_safe_to_free(skiplist_node* node) {
     if (node->accessing_next) return 0;
     if (node->being_modified) return 0;
@@ -733,7 +739,7 @@ void skiplist_grab_node(skiplist_node* node) {
 }
 
 void skiplist_release_node(skiplist_node* node) {
-    assert(node->ref_count);
+    __SLD_ASSERT(node->ref_count);
     ATM_FETCH_SUB(node->ref_count, 1);
 }
 

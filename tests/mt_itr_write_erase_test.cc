@@ -71,12 +71,11 @@ void itr_thread(ThreadArgs* args) {
     args->ret = _itr_thread(args);
 }
 
-void writer_thread(ThreadArgs* args) {
+int _writer_thread(ThreadArgs* args) {
     std::chrono::time_point<std::chrono::system_clock> start, cur;
     std::chrono::duration<double> elapsed;
 
     start = std::chrono::system_clock::now();
-
     do {
         int r;
         TestNode* node;
@@ -115,10 +114,26 @@ void writer_thread(ThreadArgs* args) {
         cur = std::chrono::system_clock::now();
         elapsed = cur - start;
     } while (args->duration_ms > elapsed.count() * 1000);
+
+    uint64_t c_check = 0;
+    skiplist_node* cursor = skiplist_begin(args->slist);
+    while (cursor) {
+        skiplist_node* temp_node = cursor;
+        cursor = skiplist_next(args->slist, cursor);
+        skiplist_release_node(temp_node);
+        c_check++;
+    }
+    if (cursor) skiplist_release_node(cursor);
+
+    CHK_EQ(c_check, skiplist_get_size(args->slist));
+    return 0;
+}
+
+void writer_thread(ThreadArgs* args) {
+    args->ret = _writer_thread(args);
 }
 
 int itr_write_erase() {
-    ThreadArgs args;
     std::thread iterator;
     std::thread writer;
     int num = 30000;
@@ -132,6 +147,8 @@ int itr_write_erase() {
         node[ii]->value = ii;
         skiplist_insert(&slist, &node[ii]->snode);
     }
+    CHK_EQ(num, (int)skiplist_get_size(&slist));
+
     for (int ii=0; ii<num; ii+=1) {
         CHK_EQ(0, node[ii]->snode.ref_count);
     }
@@ -143,14 +160,21 @@ int itr_write_erase() {
         CHK_EQ(0, node[ii]->snode.ref_count);
     }
 
-    args.slist = &slist;
-    args.duration_ms = 1000;
-    args.max_num = num;
-    iterator = std::thread(itr_thread, &args);
-    writer = std::thread(writer_thread, &args);
+    ThreadArgs args_itr;
+    ThreadArgs args_writer;
+    args_itr.slist = &slist;
+    args_itr.duration_ms = 1000;
+    args_itr.max_num = num;
+    args_itr.ret = 0;
+    args_writer = args_itr;
+    iterator = std::thread(itr_thread, &args_itr);
+    writer = std::thread(writer_thread, &args_writer);
 
     iterator.join();
     writer.join();
+
+    CHK_EQ(0, args_itr.ret);
+    CHK_EQ(0, args_writer.ret);
 
     for (int ii=0; ii<num; ii+=1) {
         CHK_EQ(0, node[ii]->snode.ref_count);
