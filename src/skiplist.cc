@@ -2,6 +2,11 @@
  * Copyright (C) 2017-present Jung-Sang Ahn <jungsang.ahn@gmail.com>
  * All rights reserved.
  *
+ * https://github.com/greensky00
+ *
+ * Skiplist
+ * Version: 0.2.0
+ *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
  * files (the "Software"), to deal in the Software without
