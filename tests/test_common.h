@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Test Suite
- * Version: 0.1.15
+ * Version: 0.1.16
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -363,11 +363,27 @@ public:
     static void clearTestFile(std::string prefix) {
         int r;
         (void)r;
-        std::string command = "rm -f ";
+        std::string command = "rm -rf ";
         command += prefix;
         command += "*";
         r = system(command.c_str());
     }
+
+    class Timer {
+    public:
+        Timer(size_t _duration_ms) : duration_ms(_duration_ms) {
+            start = std::chrono::system_clock::now();
+        }
+        bool timeover() {
+            auto cur = std::chrono::system_clock::now();
+            std::chrono::duration<double> elapsed = cur - start;
+            if (duration_ms < elapsed.count() * 1000) return true;
+            return false;
+        }
+    private:
+        std::chrono::time_point<std::chrono::system_clock> start;
+        size_t duration_ms;
+    };
 
     inline void doTest(std::string test_name,
                        test_func func);
@@ -687,4 +703,6 @@ void TestSuite::doTest(std::string test_name,
     name ## _class* name = static_cast<name ## _class*>(TEST_args_base__)
 
 #define PARAM_BASE TestArgsBase* TEST_args_base__
+
+#define TEST_SUITE_AUTO_PREFIX __func__
 

@@ -37,11 +37,7 @@ struct ThreadArgs {
 };
 
 int _itr_thread(ThreadArgs* args) {
-    std::chrono::time_point<std::chrono::system_clock> start, cur;
-    std::chrono::duration<double> elapsed;
-
-    start = std::chrono::system_clock::now();
-
+    TestSuite::Timer timer(args->duration_ms);
     do {
         int num_walks = 10;
         int count = 0;
@@ -59,10 +55,7 @@ int _itr_thread(ThreadArgs* args) {
             if (++count > num_walks) break;
         }
         if (cursor) skiplist_release_node(cursor);
-
-        cur = std::chrono::system_clock::now();
-        elapsed = cur - start;
-    } while (args->duration_ms > elapsed.count() * 1000);
+    } while (!timer.timeover());
 
     return 0;
 }
@@ -72,10 +65,7 @@ void itr_thread(ThreadArgs* args) {
 }
 
 int _writer_thread(ThreadArgs* args) {
-    std::chrono::time_point<std::chrono::system_clock> start, cur;
-    std::chrono::duration<double> elapsed;
-
-    start = std::chrono::system_clock::now();
+    TestSuite::Timer timer(args->duration_ms);
     do {
         int r;
         TestNode* node;
@@ -110,10 +100,7 @@ int _writer_thread(ThreadArgs* args) {
             }
             delete node;
         }
-
-        cur = std::chrono::system_clock::now();
-        elapsed = cur - start;
-    } while (args->duration_ms > elapsed.count() * 1000);
+    } while (!timer.timeover());
 
     uint64_t c_check = 0;
     skiplist_node* cursor = skiplist_begin(args->slist);
