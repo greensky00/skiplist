@@ -84,11 +84,10 @@ int main() {
         skiplist_erase_node(&slist, &found->snode);
         // Release `found`, to free its memory.
         skiplist_release_node(&found->snode);
-        // Free `found` if safe.
-        if (skiplist_is_safe_to_free(&found->snode)) {
-            skiplist_free_node(&found->snode);
-            free(found);
-        }
+        // Free `found` after it becomes safe.
+        skiplist_wait_for_free(&found->snode);
+        skiplist_free_node(&found->snode);
+        free(found);
     }
 
     //   << Iteration >>
