@@ -62,7 +62,7 @@ void set_example() {
     }
 
     //   << Erase >>
-    // Erase the KV pair for key 1: {1, 10}.
+    // Erase 1.
     slist.erase(1);
 
     //   << Iteration >>
