@@ -34,27 +34,35 @@ void reader(thread_args* args) {
     TestSuite::Timer timer(args->duration_ms);
     while (!timer.timeover()) {
         int r = rand() % args->num;
+        int max_walks = 5;
+        int walks = 0;
 
         if (args->mode == thread_args::SKIPLIST) {
             auto itr = args->sl->find(r);
-            if (itr != args->sl->end()) {
+            while (itr != args->sl->end()) {
                 args->temp += itr->second;
+                itr++;
+                if (++walks >= max_walks) break;
             }
 
         } else if (args->mode == thread_args::MAP_MUTEX) {
             std::lock_guard<std::mutex> l(*args->lock);
             auto itr = args->stdmap->find(r);
-            if (itr != args->stdmap->end()) {
+            while (itr != args->stdmap->end()) {
                 args->temp += itr->second;
+                itr++;
+                if (++walks >= max_walks) break;
             }
 
         } else  {
             auto itr = args->stdmap->find(r);
-            if (itr != args->stdmap->end()) {
+            while (itr != args->stdmap->end()) {
                 args->temp += itr->second;
+                itr++;
+                if (++walks >= max_walks) break;
             }
         }
-        args->op_count++;
+        args->op_count += max_walks;
     }
 }
 
