@@ -4,6 +4,7 @@ A generic Skiplist container C implementation, lock free for both multiple reade
 
 It basically uses STL atomic variables with C++ compiler, but they can be switched to built-in GCC atomic operations when we compile it with pure C compiler.
 
+This repository also contains STL-style lock-free `set` and `map` containers, based on Skiplist implementation. 
 
 
 Author
@@ -17,143 +18,17 @@ Build
 $ make
 ```
 
-
 How to use
 ----------
-(refer to ```tests/skiplist_test.cc```)
 
-Below example describes how to use Skiplist as an ordered map of integer pairs.
+* Pure C
 
-We define a node for an integer pair, and a comparison function of given two nodes:
-```C
-#include "skiplist.h"
+[examples/pure_c_example.c](examples/pure_c_example.c)
 
-struct kv_node{
-    skiplist_node snode;
-    // put your data here
-    int key;
-    int value;
-};
+* C++ (STL-style `set` and `map`)
 
-int cmp_func(skiplist_node *a, skiplist_node *b, void *aux)
-{
-    struct kv_node *aa, *bb;
-    aa = _get_entry(a, struct kv_node, snode);
-    bb = _get_entry(b, struct kv_node, snode);
+[examples/cpp_container_example.cc](examples/cpp_container_example.cc)
 
-    if (aa->key < bb->key)
-        return -1;
-    else if (aa->key > bb->key)
-        return 1;
-    else
-        return 0;
-}
-```
-
-Example code:
-
-* Initialize a Skiplist
-```C
-skiplist_raw list;
-
-skiplist_init(&list, cmp_func);
-```
-
-* Insert ```{1, 10}``` pair
-```C
-struct kv_node *node;
-
-node = (struct kv_node*)malloc(sizeof(struct kv_node));
-skiplist_init_node(&node->snode);
-
-node->key = 1;
-node->value = 10;
-skiplist_insert(&list, &node->snode);
-```
-
-* Insert ```{2, 20}``` pair
-```C
-struct kv_node *node;
-
-node = (struct kv_node*)malloc(sizeof(struct kv_node));
-skiplist_init_node(&node->snode);
-
-node->key = 2;
-node->value = 20;
-skiplist_insert(&list, &node->snode);
-```
-
-* Find the value corresponding to key ```1```
-```C
-struct kv_node query;
-struct kv_node *node;
-skiplist_node *cursor;
-
-query.key = 1;
-cursor = skiplist_find(&list, &query.snode);
-
-// get 'node' from 'cursor'
-node = _get_entry(cursor, struct kv_node, snode);
-printf("%d\n", node->value);    // it will display 10
-
-// release 'cursor',
-// to allow concurrent thread to erase this node
-skiplist_release_node(cursor);
-```
-
-* Iteration
-```C
-struct kv_node *node;
-skiplist_node *cursor;
-
-cursor = skiplist_begin(&list);
-while (cursor) {
-    // get 'node' from 'cursor'
-    node = _get_entry(cursor, struct kv_node, snode);
-
-    // ... do something with 'node' ...
-
-    // get next cursor
-    cursor = skiplist_next(&list, cursor);
-    // release current 'node' (i.e., previous 'cursor')
-    skiplist_release_node(&node->snode);
-}
-// release the last cursor
-if (cursor)
-    skiplist_release_node(cursor);
-```
-
-* Remove the key-value pair corresponding to key ```1```
-```C
-struct kv_node query;
-struct kv_node *node;
-skiplist_node *cursor;
-
-query.key = 1;
-cursor = skiplist_find(&list, &query.snode);
-if (cursor) {
-    // get 'node' from 'cursor'
-    node = _get_entry(cursor, struct kv_node, snode);
-    // remove from list
-    skiplist_erase_node(&list, cursor);
-    // release 'cursor'
-    skiplist_release_node(cursor);
-    // before free resources, do safety check
-    if (skiplist_is_safe_to_free(cursor)) {
-        // free 'cursor' (i.e., node->snode)
-        skiplist_free_node(cursor);
-        // free 'node', only when it is safe to free.
-        free(node);
-    } else {
-        // otherwise, 'cursor' is still being accessed
-        // by other concurrent thread.
-        // there are two options:
-        //  1) wait here until it becomes safe,
-        //     blocking the user (caller) thread.
-        //  2) free it in background.
-    }
-}
-```
 
 Benchmark results
 -----------------
