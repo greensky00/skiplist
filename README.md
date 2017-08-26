@@ -1,10 +1,10 @@
 Skiplist
 --------
-A generic Skiplist container C implementation, lock free for both multiple readers and writers. It can be used as a set or a map, containing any type of data.
+A generic Skiplist container C implementation, lock-free for both multiple readers and writers. It can be used as a set or a map, containing any type of data.
 
 It basically uses STL atomic variables with C++ compiler, but they can be switched to built-in GCC atomic operations when we compile it with pure C compiler.
 
-This repository also contains STL-style lock-free `set` and `map` containers, based on Skiplist implementation. 
+This repository also includes STL-style lock-free `set` and `map` containers, based on Skiplist implementation. 
 
 
 Author
