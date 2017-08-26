@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Test Suite
- * Version: 0.1.16
+ * Version: 0.1.17
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -416,7 +416,7 @@ private:
     void readyTest(std::string& test_name) {
         printf("[ " "...." " ] %s\n", test_name.c_str());
         if (options.printTestMessage) {
-            printf(_CL_D_GRAY("   === TEST MESSAGE (BEGIN) ===\n") _CLM_D_GRAY);
+            printf(_CL_D_GRAY("   === TEST MESSAGE (BEGIN) ===\n"));
         }
         fflush(stdout);
 

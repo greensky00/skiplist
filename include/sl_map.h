@@ -117,11 +117,9 @@ public:
         while (cursor) {
             Node* node = _get_entry(cursor, Node, snode);
             cursor = skiplist_next(&slist, cursor);
-            skiplist_erase_node(&slist, &node->snode);
-            skiplist_release_node(&node->snode);
+            // Don't need to care about release.
             delete node;
         }
-        if (cursor) skiplist_release_node(cursor);
         skiplist_free(&slist);
     }
 

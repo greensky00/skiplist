@@ -588,12 +588,12 @@ int skiplist_erase_node_passive(skiplist_raw *slist,
 
     bool expected = false;
     if (!ATM_CAS(node->being_modified, expected, bool_true)) {
-        // already being modified .. fail
+        // already being modified .. cannot work on this node for now.
         __SLD_BM(node);
         return -2;
     }
 
-    // clear removed flag first, so that reader cannot read this node.
+    // set removed flag first, so that reader cannot read this node.
     ATM_STORE(node->removed, bool_true);
 
 erase_node_retry:
