@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Skiplist
- * Version: 0.2.0
+ * Version: 0.2.1
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -569,8 +569,8 @@ skiplist_node* skiplist_find_greater_or_equal(skiplist_raw *slist,
     return _sl_find(slist, query, GTEQ);
 }
 
-int skiplist_erase_node(skiplist_raw *slist,
-                        skiplist_node *node)
+int skiplist_erase_node_passive(skiplist_raw *slist,
+                                skiplist_node *node)
 {
     int top_layer = node->top_layer;
     bool bool_true = true, bool_false = false;
@@ -696,12 +696,12 @@ erase_node_retry:
     return 0;
 }
 
-int skiplist_erase_node_enforce(skiplist_raw *slist,
+int skiplist_erase_node(skiplist_raw *slist,
                                 skiplist_node *node)
 {
     int ret = 0;
     do {
-        ret = skiplist_erase_node(slist, node);
+        ret = skiplist_erase_node_passive(slist, node);
         // if ret == -2, other thread is accessing the same node
         // at the same time. try again.
     } while (ret == -2);
@@ -719,7 +719,7 @@ int skiplist_erase(skiplist_raw *slist,
 
     int ret = 0;
     do {
-        ret = skiplist_erase_node(slist, found);
+        ret = skiplist_erase_node_passive(slist, found);
         // if ret == -2, other thread is accessing the same node
         // at the same time. try again.
     } while (ret == -2);
@@ -737,6 +737,11 @@ int skiplist_is_safe_to_free(skiplist_node* node) {
     ATM_LOAD(node->ref_count, ref_count);
     if (ref_count) return 0;
     return 1;
+}
+
+void skiplist_wait_for_free(skiplist_node* node) {
+    while (!skiplist_is_safe_to_free(node))
+        sched_yield();
 }
 
 void skiplist_grab_node(skiplist_node* node) {

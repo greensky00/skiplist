@@ -77,7 +77,6 @@ int _writer_thread(ThreadArgs* args) {
         cursor = skiplist_find(args->slist, &query.snode);
         if (!cursor) {
             node = new TestNode();
-            skiplist_init_node(&node->snode);
             node->value = r;
             skiplist_insert(args->slist, &node->snode);
         } else {
@@ -95,9 +94,7 @@ int _writer_thread(ThreadArgs* args) {
                 printf("%d %d\n", (int)node->snode.being_modified,
                     (int)node->snode.removed);
             skiplist_release_node(&node->snode);
-            while (!skiplist_is_safe_to_free(&node->snode)) {
-                usleep(10);
-            }
+            skiplist_wait_for_free(&node->snode);
             delete node;
         }
     } while (!timer.timeover());
@@ -127,7 +124,7 @@ int itr_write_erase() {
 
     skiplist_raw slist;
     skiplist_init(&slist, TestNode::cmp);
-    std::vector<TestNode*> node(num);
+    TestNode* node[num];
 
     for (int ii=0; ii<num; ii+=1) {
         node[ii] = new TestNode();
@@ -142,8 +139,9 @@ int itr_write_erase() {
 
     for (int ii=0; ii<num; ii+=2) {
         skiplist_erase_node(&slist, &node[ii]->snode);
+        delete node[ii];
     }
-    for (int ii=0; ii<num; ii+=1) {
+    for (int ii=1; ii<num; ii+=2) {
         CHK_EQ(0, node[ii]->snode.ref_count);
     }
 
@@ -163,17 +161,15 @@ int itr_write_erase() {
     CHK_EQ(0, args_itr.ret);
     CHK_EQ(0, args_writer.ret);
 
-    for (int ii=0; ii<num; ii+=1) {
-        CHK_EQ(0, node[ii]->snode.ref_count);
-    }
-
     skiplist_node* cursor = skiplist_begin(&slist);
     while(cursor) {
         TestNode* cur_node = _get_entry(cursor, TestNode, snode);
         if (cur_node->snode.ref_count != 1)
             printf("%d %d\n", (int)cur_node->value, (int)cur_node->snode.ref_count);
+        CHK_EQ(1, cur_node->snode.ref_count);
         cursor = skiplist_next(&slist, cursor);
         skiplist_release_node(&cur_node->snode);
+        delete cur_node;
     }
     if (cursor) skiplist_release_node(cursor);
 
@@ -216,6 +212,7 @@ int itr_erase_deterministic() {
         cursor = skiplist_next(&slist, cursor);
         skiplist_release_node(&cur_node->snode);
         count++;
+        delete cur_node;
     }
     if (cursor) skiplist_release_node(cursor);
     CHK_EQ(num-1, count);

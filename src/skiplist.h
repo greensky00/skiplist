@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Skiplist
- * Version: 0.2.0
+ * Version: 0.2.1
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -118,14 +118,15 @@ skiplist_node* skiplist_find_smaller_or_equal(skiplist_raw* slist,
 skiplist_node* skiplist_find_greater_or_equal(skiplist_raw* slist,
                                               skiplist_node* query);
 
-int skiplist_erase_node(skiplist_raw* slist,
-                        skiplist_node* node);
-int skiplist_erase_node_enforce(skiplist_raw *slist,
-                                skiplist_node *node);
+int skiplist_erase_node_passive(skiplist_raw* slist,
+                                skiplist_node* node);
+int skiplist_erase_node(skiplist_raw *slist,
+                        skiplist_node *node);
 int skiplist_erase(skiplist_raw* slist,
                    skiplist_node* query);
 
 int skiplist_is_safe_to_free(skiplist_node* node);
+void skiplist_wait_for_free(skiplist_node* node);
 
 void skiplist_grab_node(skiplist_node* node);
 void skiplist_release_node(skiplist_node* node);
