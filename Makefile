@@ -5,7 +5,7 @@ CFLAGS = \
 	-fPIC \
 
 CFLAGS += -Wall
-#CFLAGS += -O3
+CFLAGS += -O3
 
 CXXFLAGS = $(CFLAGS) \
 	--std=c++11 \
@@ -35,8 +35,12 @@ PURE_C_EXAMPLE = \
 	examples/pure_c_example.o \
 	$(STATIC_LIB) \
 
-CPP_CONTAINER_EXAMPLE = \
-	examples/cpp_container_example.o \
+CPP_MAP_EXAMPLE = \
+	examples/cpp_map_example.o \
+	$(STATIC_LIB) \
+
+CPP_SET_EXAMPLE = \
+	examples/cpp_set_example.o \
 	$(STATIC_LIB) \
 
 PROGRAMS = \
@@ -45,7 +49,8 @@ PROGRAMS = \
 	tests/container_test \
 	tests/stl_map_compare \
 	examples/pure_c_example \
-	examples/cpp_container_example \
+	examples/cpp_set_example \
+	examples/cpp_map_example \
 	libskiplist.so \
 	libskiplist.a \
 
@@ -72,7 +77,10 @@ tests/stl_map_compare: $(STL_MAP_COMPARE)
 examples/pure_c_example: $(PURE_C_EXAMPLE)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-examples/cpp_container_example: $(CPP_CONTAINER_EXAMPLE)
+examples/cpp_map_example: $(CPP_MAP_EXAMPLE)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+examples/cpp_set_example: $(CPP_SET_EXAMPLE)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:

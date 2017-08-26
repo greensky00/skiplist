@@ -101,7 +101,7 @@ int concurrent_test(int mode) {
     int num = 10000000;
     int duration_ms = 5000;
 
-    int num_readers = 2;
+    int num_readers = 4;
     thread_args r_args[num_readers];
     std::thread readers[num_readers];
     for (int i=0; i<num_readers; ++i) {
