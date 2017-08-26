@@ -2,6 +2,7 @@ LDFLAGS = -pthread
 CFLAGS = \
 	-g -D_GNU_SOURCE \
 	-I. -I./src -I./debug -I./include -I./examples \
+	-fPIC \
 
 CFLAGS += -Wall
 #CFLAGS += -O3
@@ -11,43 +12,53 @@ CXXFLAGS = $(CFLAGS) \
 
 
 SKIPLIST = src/skiplist.o
+SHARED_LIB = libskiplist.so
+STATIC_LIB = libskiplist.a
 
-TEST = tests/skiplist_test.o \
-	   $(SKIPLIST)
+TEST = \
+	tests/skiplist_test.o \
+	$(STATIC_LIB) \
 
-ITR_TEST = \
-	tests/mt_itr_write_erase_test.o \
-	$(SKIPLIST)
+MT_TEST = \
+	tests/mt_test.o \
+	$(STATIC_LIB) \
 
 CONTAINER_TEST = \
 	tests/container_test.o \
-	$(SKIPLIST)
+	$(STATIC_LIB) \
 
 PURE_C_EXAMPLE = \
 	examples/pure_c_example.o \
-	$(SKIPLIST)
+	$(STATIC_LIB) \
 
 CPP_CONTAINER_EXAMPLE = \
 	examples/cpp_container_example.o \
-	$(SKIPLIST)
+	$(STATIC_LIB) \
 
 PROGRAMS = \
-	skiplist_test \
-	itr_test \
-	container_test \
+	tests/skiplist_test \
+	tests/mt_test \
+	tests/container_test \
 	examples/pure_c_example \
 	examples/cpp_container_example \
-
+	libskiplist.so \
+	libskiplist.a \
 
 all: $(PROGRAMS)
 
-skiplist_test: $(TEST)
+libskiplist.so: $(SKIPLIST)
+	$(CXX) $(CXXFLAGS) -shared $(LDBFALGS) -o $(SHARED_LIB) $(SKIPLIST)
+
+libskiplist.a: $(SKIPLIST)
+	ar rcs $(STATIC_LIB) $(SKIPLIST)
+
+tests/skiplist_test: $(TEST)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-itr_test: $(ITR_TEST)
+tests/mt_test: $(MT_TEST)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-container_test: $(CONTAINER_TEST)
+tests/container_test: $(CONTAINER_TEST)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 examples/pure_c_example: $(PURE_C_EXAMPLE)
