@@ -21,13 +21,19 @@ $ make
 How to use
 ----------
 
+Copy [`skiplist.cc`](src/skiplist.cc) file and [`include`](include) files to your source repository.
+
+Or, use library file (`libskiplist.so` or `libskiplist.a`).
+
 * Pure C
 
 [examples/pure_c_example.c](examples/pure_c_example.c)
 
 * C++ (STL-style `set` and `map`)
 
-[examples/cpp_container_example.cc](examples/cpp_container_example.cc)
+[examples/cpp_set_example.cc](examples/cpp_set_example.cc)
+
+[examples/cpp_map_example.cc](examples/cpp_map_example.cc)
 
 
 Benchmark results
