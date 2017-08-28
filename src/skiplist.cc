@@ -755,7 +755,40 @@ void skiplist_release_node(skiplist_node* node) {
 
 skiplist_node* skiplist_next(skiplist_raw *slist,
                              skiplist_node *node) {
-    skiplist_node *next = _sl_next(slist, node, 0);
+    //   << Issue >>
+    // If `node` is already removed and its next node is also removed
+    // and then released, the link update will not be applied to `node`
+    // as it is already unrechable from skiplist. `node` still points to
+    // the released node so that `_sl_next(node)` may return corrupted
+    // memory region.
+    //
+    // 0) initial:
+    //    A -> B -> C -> D
+    //
+    // 1) B is `node`, which is removed but not yet released:
+    //    B --+-> C -> D
+    //        |
+    //    A --+
+    //
+    // 2) remove C, and then release:
+    //    B -> !C!  +-> D
+    //              |
+    //    A --------+
+    //
+    // 3) skiplist_next(B):
+    //    will fetch C, which is already released so that
+    //    may contain garbage data.
+    //
+    // In this case, start over from the top layer,
+    // to find valid link (same as in prev()).
+
+    skiplist_node *next = NULL;
+    if (_sl_valid_node(node)) {
+        next = _sl_next(slist, node, 0);
+    } else {
+        next = _sl_find(slist, node, GT);
+    }
+
     if (next == &slist->tail) {
         return NULL;
     }

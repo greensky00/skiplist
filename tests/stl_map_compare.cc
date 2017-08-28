@@ -30,18 +30,30 @@ struct thread_args {
     std::mutex* lock;
 };
 
+size_t num_primes(uint64_t number, size_t max_prime) {
+    size_t ret = 0;
+    for (size_t ii=2; ii<=max_prime; ++ii) {
+        if (number % ii == 0) {
+            number /= ii;
+            ret++;
+        }
+    }
+    return ret;
+}
+
 void reader(thread_args* args) {
     TestSuite::Timer timer(args->duration_ms);
     while (!timer.timeover()) {
         int r = rand() % args->num;
-        int max_walks = 5;
+        int max_walks = 3;
         int walks = 0;
 
         if (args->mode == thread_args::SKIPLIST) {
             auto itr = args->sl->find(r);
             while (itr != args->sl->end()) {
-                args->temp += itr->second;
+                uint64_t number = itr->second;
                 itr++;
+                args->temp += num_primes(number, 10000);
                 if (++walks >= max_walks) break;
             }
 
@@ -49,16 +61,18 @@ void reader(thread_args* args) {
             std::lock_guard<std::mutex> l(*args->lock);
             auto itr = args->stdmap->find(r);
             while (itr != args->stdmap->end()) {
-                args->temp += itr->second;
+                uint64_t number = itr->second;
                 itr++;
+                args->temp += num_primes(number, 10000);
                 if (++walks >= max_walks) break;
             }
 
         } else  {
             auto itr = args->stdmap->find(r);
             while (itr != args->stdmap->end()) {
-                args->temp += itr->second;
+                uint64_t number = itr->second;
                 itr++;
+                args->temp += num_primes(number, 10000);
                 if (++walks >= max_walks) break;
             }
         }
