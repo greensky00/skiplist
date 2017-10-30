@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Skiplist
- * Version: 0.2.1
+ * Version: 0.2.2
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -362,8 +362,9 @@ static inline bool _sl_valid_prev_next(skiplist_node *prev,
     return _sl_valid_node(prev) && _sl_valid_node(next);
 }
 
-void skiplist_insert(skiplist_raw *slist,
-                     skiplist_node *node)
+static inline int _skiplist_insert(skiplist_raw *slist,
+                                   skiplist_node *node,
+                                   bool no_dup)
 {
     int top_layer = _sl_decide_top_layer(slist);
     bool bool_true = true;
@@ -397,6 +398,13 @@ insert_retry:
             } else {
                 // otherwise: cur_node < node <= next_node
                 ATM_FETCH_SUB(next_node->ref_count, 1);
+            }
+
+            if (no_dup && cmp == 0) {
+                // Duplicate key is not allowed.
+                _sl_clr_flags(prevs, cur_layer, top_layer);
+                ATM_FETCH_SUB(cur_node->ref_count, 1);
+                return -1;
             }
 
             if (cur_layer <= top_layer) {
@@ -477,9 +485,22 @@ insert_retry:
             _sl_clr_flags(prevs, 0, top_layer);
             ATM_FETCH_SUB(cur_node->ref_count, 1);
             ATM_FETCH_ADD(slist->num_entries, 1);
-            return;
+            return 0;
         } while (cur_node != &slist->tail);
     }
+    return 0;
+}
+
+int skiplist_insert(skiplist_raw *slist,
+                    skiplist_node *node)
+{
+    return _skiplist_insert(slist, node, false);
+}
+
+int skiplist_insert_nodup(skiplist_raw *slist,
+                          skiplist_node *node)
+{
+    return _skiplist_insert(slist, node, true);
 }
 
 typedef enum {

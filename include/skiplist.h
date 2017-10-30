@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Skiplist
- * Version: 0.2.1
+ * Version: 0.2.2
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -108,8 +108,10 @@ skiplist_raw_config skiplist_get_config(skiplist_raw* slist);
 void skiplist_set_config(skiplist_raw* slist,
                          skiplist_raw_config config);
 
-void skiplist_insert(skiplist_raw* slist,
-                     skiplist_node* node);
+int skiplist_insert(skiplist_raw* slist,
+                    skiplist_node* node);
+int skiplist_insert_nodup(skiplist_raw *slist,
+                          skiplist_node *node);
 
 skiplist_node* skiplist_find(skiplist_raw* slist,
                              skiplist_node* query);
