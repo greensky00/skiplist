@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Skiplist
- * Version: 0.2.2
+ * Version: 0.2.5
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -40,6 +40,9 @@
 struct _skiplist_node;
 
 //#define _STL_ATOMIC (1)
+#ifdef __APPLE__
+    #define _STL_ATOMIC (1)
+#endif
 #if defined(_STL_ATOMIC) && defined(__cplusplus)
     #include <atomic>
     typedef std::atomic<_skiplist_node*>   atm_node_ptr;
@@ -127,6 +130,7 @@ int skiplist_erase_node(skiplist_raw *slist,
 int skiplist_erase(skiplist_raw* slist,
                    skiplist_node* query);
 
+int skiplist_is_valid_node(skiplist_node* node);
 int skiplist_is_safe_to_free(skiplist_node* node);
 void skiplist_wait_for_free(skiplist_node* node);
 
