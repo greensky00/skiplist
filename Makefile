@@ -75,7 +75,7 @@ tests/stl_map_compare: $(STL_MAP_COMPARE)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 examples/pure_c_example: $(PURE_C_EXAMPLE)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 examples/cpp_map_example: $(CPP_MAP_EXAMPLE)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)

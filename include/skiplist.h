@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Skiplist
- * Version: 0.2.5
+ * Version: 0.2.6
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -35,7 +35,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SKIPLIST_MAX_LAYER (256)
+#define SKIPLIST_MAX_LAYER (64)
 
 struct _skiplist_node;
 

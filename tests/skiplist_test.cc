@@ -24,8 +24,10 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
+#include "skiplist.h"
+
+#include "test_common.h"
+
 #include <vector>
 #include <chrono>
 #include <ctime>
@@ -33,9 +35,8 @@
 #include <set>
 #include <mutex>
 
-#include <assert.h>
-
-#include "skiplist.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 struct IntNode {
     IntNode() {
@@ -63,7 +64,7 @@ int _cmp_IntNode(skiplist_node *a, skiplist_node *b, void *aux)
     }
 }
 
-void basic_insert_and_erase()
+int basic_insert_and_erase()
 {
     skiplist_raw list;
     skiplist_init(&list, _cmp_IntNode);
@@ -96,11 +97,11 @@ void basic_insert_and_erase()
     skiplist_node *cur = skiplist_begin(&list);
     while (cur) {
         IntNode *node = _get_entry(cur, IntNode, snode);
-        assert(node->value == count);
+        CHK_EQ(count, node->value);
         cur = skiplist_next(&list, cur);
         count++;
     }
-    assert(count == n);
+    CHK_EQ(n, count);
 
     // backward iteration
     count = n;
@@ -108,19 +109,19 @@ void basic_insert_and_erase()
     while (cur) {
         count--;
         IntNode *node = _get_entry(cur, IntNode, snode);
-        assert(node->value == count);
+        CHK_EQ(count, node->value);
         cur = skiplist_prev(&list, cur);
     }
-    assert(count == 0);
+    CHK_EQ(0, count);
 
     // remove even numbers
     IntNode query;
     for (i=0; i<n; i+=2) {
         query.value = i;
         cur = skiplist_find(&list, &query.snode);
-        assert(cur);
+        CHK_NONNULL(cur);
         int ret_value = skiplist_erase_node(&list, cur);
-        assert(ret_value == 0);
+        CHK_EQ(0, ret_value);
     }
 
     // forward iteration
@@ -128,11 +129,11 @@ void basic_insert_and_erase()
     cur = skiplist_begin(&list);
     while (cur) {
         IntNode *node = _get_entry(cur, IntNode, snode);
-        assert(node->value == count*2 + 1);
+        CHK_EQ(count*2 + 1, node->value);
         cur = skiplist_next(&list, cur);
         count++;
     }
-    assert(count == n/2);
+    CHK_EQ(n/2, count);
 
     // backward iteration
     count = n/2;
@@ -140,16 +141,24 @@ void basic_insert_and_erase()
     while (cur) {
         count--;
         IntNode *node = _get_entry(cur, IntNode, snode);
-        assert(node->value == count*2 + 1);
+        CHK_EQ(count*2 + 1, node->value);
         cur = skiplist_prev(&list, cur);
     }
-    assert(count == 0);
+    CHK_EQ(0, count);
 
     skiplist_free(&list);
+
+    return 0;
 }
 
-void find_test()
+int find_test()
 {
+    TestSuite::Timer tt;
+    TestSuite::appendResultMessage("\n");
+
+    double elapsed_sec = 1;
+    char msg[1024];
+
     skiplist_raw list;
     skiplist_init(&list, _cmp_IntNode);
 
@@ -170,91 +179,92 @@ void find_test()
         key[j] = temp;
     }
 
-    std::chrono::time_point<std::chrono::system_clock> start, end;
-    start = std::chrono::system_clock::now();
+    tt.reset();
     for (i=0; i<n; ++i) {
         arr[i].value = key[i];
         skiplist_insert(&list, &arr[i].snode);
     }
-    end = std::chrono::system_clock::now();
-    std::chrono::duration<double> elapsed_seconds = end-start;
-    printf("insert %.4f (%.1f ops/sec)\n",
-           elapsed_seconds.count(), n/elapsed_seconds.count());
+    elapsed_sec = tt.getTimeUs() / 1000000.0;
+    sprintf(msg, "insert %.4f (%.1f ops/sec)\n",
+            elapsed_sec, n / elapsed_sec);
+    TestSuite::appendResultMessage(msg);
 
     // ==== find exact match key
     IntNode query, *item;
     skiplist_node *ret;
 
-    start = std::chrono::system_clock::now();
+    tt.reset();
     for (i=0; i<n; ++i) {
         query.value = i*10;
         ret = skiplist_find(&list, &query.snode);
-        assert(ret);
+        CHK_NONNULL(ret);
         item = _get_entry(ret, IntNode, snode);
-        assert(item->value == query.value);
+        CHK_EQ(query.value, item->value);
     }
-    end = std::chrono::system_clock::now();
-    elapsed_seconds = end-start;
-    printf("find (existing key) done: %.4f (%.1f ops/sec)\n",
-           elapsed_seconds.count(), n/elapsed_seconds.count());
+    elapsed_sec = tt.getTimeUs() / 1000000.0;
+    sprintf(msg, "find (existing key) done: %.4f (%.1f ops/sec)\n",
+            elapsed_sec, n / elapsed_sec);
+    TestSuite::appendResultMessage(msg);
 
     // ==== find smaller key
-    start = std::chrono::system_clock::now();
+    tt.reset();
 
     // smaller than smallest key
     query.value = -5;
     ret = skiplist_find_smaller_or_equal(&list, &query.snode);
-    assert(ret == NULL);
+    CHK_NULL(ret);
 
     for (i=0; i<n; ++i) {
         query.value = i*10 + 5;
         ret = skiplist_find_smaller_or_equal(&list, &query.snode);
-        assert(ret);
+        CHK_NONNULL(ret);
         item = _get_entry(ret, IntNode, snode);
-        assert(item->value == i*10);
+        CHK_EQ(i*10, item->value);
     }
-    end = std::chrono::system_clock::now();
-    elapsed_seconds = end-start;
-    printf("find (smaller key) done: %.4f (%.1f ops/sec)\n",
-           elapsed_seconds.count(), n/elapsed_seconds.count());
+    elapsed_sec = tt.getTimeUs() / 1000000.0;
+    sprintf(msg, "find (smaller key) done: %.4f (%.1f ops/sec)\n",
+            elapsed_sec, n / elapsed_sec);
+    TestSuite::appendResultMessage(msg);
 
     // ==== find greater key
-    start = std::chrono::system_clock::now();
+    tt.reset();
 
     for (i=0; i<n; ++i) {
         query.value = i*10 - 5;
         ret = skiplist_find_greater_or_equal(&list, &query.snode);
-        assert(ret);
+        CHK_NONNULL(ret);
         item = _get_entry(ret, IntNode, snode);
-        assert(item->value == i*10);
+        CHK_EQ(i*10, item->value);
     }
 
     // greater than greatest key
     query.value = i*10;
     ret = skiplist_find_greater_or_equal(&list, &query.snode);
-    assert(ret == NULL);
+    CHK_NULL(ret);
 
-    end = std::chrono::system_clock::now();
-    elapsed_seconds = end-start;
-    printf("find (greater key) done: %.4f (%.1f ops/sec)\n",
-           elapsed_seconds.count(), n/elapsed_seconds.count());
+    elapsed_sec = tt.getTimeUs() / 1000000.0;
+    sprintf(msg, "find (greater key) done: %.4f (%.1f ops/sec)\n",
+            elapsed_sec, n / elapsed_sec);
+    TestSuite::appendResultMessage(msg);
 
     // ==== find non-existing key
-    start = std::chrono::system_clock::now();
+    tt.reset();
     for (i=0; i<n; ++i) {
         query.value = i*10 + 1;
         ret = skiplist_find(&list, &query.snode);
-        assert(ret == NULL);
+        CHK_NULL(ret);
     }
-    end = std::chrono::system_clock::now();
-    elapsed_seconds = end-start;
-    printf("find (non-existing key) done: %.4f (%.1f ops/sec)\n",
-           elapsed_seconds.count(), n/elapsed_seconds.count());
+    elapsed_sec = tt.getTimeUs() / 1000000.0;
+    sprintf(msg, "find (non-existing key) done: %.4f (%.1f ops/sec)\n",
+            elapsed_sec, n / elapsed_sec);
+    TestSuite::appendResultMessage(msg);
 
     skiplist_free(&list);
+
+    return 0;
 }
 
-struct thread_args {
+struct thread_args : TestSuite::ThreadArgs {
     skiplist_raw* list;
     std::set<int>* stl_set;
     std::mutex *lock;
@@ -263,7 +273,7 @@ struct thread_args {
     std::vector<IntNode>* arr;
     int range_begin;
     int range_end;
-    std::chrono::duration<double> elapsed_seconds;
+    double elapsed_sec;
 };
 
 struct test_args {
@@ -275,12 +285,10 @@ struct test_args {
     bool use_skiplist;
 };
 
-void* writer_thread(void *voidargs)
+int writer_thread(void *voidargs)
 {
     thread_args *args = (thread_args*)voidargs;
-
-    std::chrono::time_point<std::chrono::system_clock> start, end;
-    start = std::chrono::system_clock::now();
+    TestSuite::Timer tt;
 
     int i;
     for (i=args->range_begin; i<=args->range_end; ++i) {
@@ -293,19 +301,15 @@ void* writer_thread(void *voidargs)
             args->lock->unlock();
         }
     }
+    args->elapsed_sec = tt.getTimeUs() / 1000000.0;
 
-    end = std::chrono::system_clock::now();
-    args->elapsed_seconds = end - start;
-
-    return NULL;
+    return 0;
 }
 
-void* eraser_thread(void *voidargs)
+int eraser_thread(void *voidargs)
 {
     thread_args *args = (thread_args*)voidargs;
-
-    std::chrono::time_point<std::chrono::system_clock> start, end;
-    start = std::chrono::system_clock::now();
+    TestSuite::Timer tt;
 
     int i;
     for (i=args->range_begin; i<=args->range_end; ++i) {
@@ -320,19 +324,15 @@ void* eraser_thread(void *voidargs)
             args->lock->unlock();
         }
     }
+    args->elapsed_sec = tt.getTimeUs() / 1000000.0;
 
-    end = std::chrono::system_clock::now();
-    args->elapsed_seconds = end - start;
-
-    return NULL;
+    return 0;
 }
 
-void* reader_thread(void *voidargs)
+int reader_thread(void *voidargs)
 {
     thread_args *args = (thread_args*)voidargs;
-
-    std::chrono::time_point<std::chrono::system_clock> start, end;
-    start = std::chrono::system_clock::now();
+    TestSuite::Timer tt;
 
     int i;
     for (i=args->range_begin; i<=args->range_end; ++i) {
@@ -348,15 +348,16 @@ void* reader_thread(void *voidargs)
             args->lock->unlock();
         }
     }
+    args->elapsed_sec = tt.getTimeUs() / 1000000.0;
 
-    end = std::chrono::system_clock::now();
-    args->elapsed_seconds = end - start;
-
-    return NULL;
+    return 0;
 }
 
-void concurrent_write_test(struct test_args t_args)
+int concurrent_write_test(test_args t_args)
 {
+    char msg[1024];
+    TestSuite::appendResultMessage("\n");
+
     skiplist_raw list;
     std::mutex lock;
     std::set<int> stl_set;
@@ -389,7 +390,7 @@ void concurrent_write_test(struct test_args t_args)
     int n_threads = t_args.n_writers;
     int n_keys_per_thread = n / n_threads;
 
-    std::vector<std::thread> t_hdl(n_threads);
+    std::vector<TestSuite::ThreadHolder*> t_holder(n_threads);
     std::vector<thread_args> args(n_threads);
 
     for (i=0; i<n_threads; ++i) {
@@ -402,29 +403,23 @@ void concurrent_write_test(struct test_args t_args)
         args[i].range_end = (i+1)*n_keys_per_thread - 1;
         args[i].use_skiplist = t_args.use_skiplist;
 
-        t_hdl[i] = std::thread(writer_thread, &args[i]);
+        t_holder[i] = new TestSuite::ThreadHolder(&args[i], writer_thread, nullptr);
     }
 
-    std::chrono::time_point<std::chrono::system_clock> start, end;
-    std::chrono::duration<double> elapsed_seconds;
-    start = std::chrono::system_clock::now();
-
+    TestSuite::Timer tt;
     for (i=0; i<n_threads; ++i){
-        t_hdl[i].join();
+        t_holder[i]->join();
+        delete t_holder[i];
     }
+    double elapsed_sec = tt.getTimeUs() / 1000000.0;
+    sprintf(msg, "insert %.4f (%d threads, %.1f ops/sec)\n",
+            elapsed_sec, n_threads, n/elapsed_sec);
+    TestSuite::appendResultMessage(msg);
 
-    end = std::chrono::system_clock::now();
-    elapsed_seconds = end - start;
-
-    printf("insert %.4f (%d threads, %.1f ops/sec)\n",
-           elapsed_seconds.count(), n_threads, n/elapsed_seconds.count());
-
-    if (!t_args.use_skiplist) {
-        return;
-    }
+    if (!t_args.use_skiplist) return 0;
 
     // integrity check (forward iteration, skiplist only)
-    start = std::chrono::system_clock::now();
+    tt.reset();
 
     int count = 0;
     bool corruption = false;
@@ -433,35 +428,42 @@ void concurrent_write_test(struct test_args t_args)
         IntNode *node = _get_entry(cur, IntNode, snode);
         if (node->value != count) {
             skiplist_node *missing = &arr[count].snode;
-            printf("idx %d is missing, %lx\n", count, (uint64_t)missing);
+            sprintf(msg, "idx %d is missing, %lx\n", count, (uint64_t)missing);
+            TestSuite::appendResultMessage(msg);
 
             skiplist_node *prev = skiplist_prev(&list, missing);
             skiplist_node *next = skiplist_next(&list, missing);
             IntNode *prev_node = _get_entry(prev, IntNode, snode);
             IntNode *next_node = _get_entry(next, IntNode, snode);
-            printf("%d %d\n", prev_node->value, next_node->value);
+            sprintf(msg, "%d %d\n", prev_node->value, next_node->value);
+            TestSuite::appendResultMessage(msg);
 
             count = node->value;
             corruption = true;
         }
-        assert(node->value == count);
+        CHK_EQ(count, node->value);
         cur = skiplist_next(&list, cur);
         count++;
     }
-    assert(count == n);
-    assert(!corruption);
+    CHK_EQ(n, count);
+    CHK_NOT(corruption);
 
-    end = std::chrono::system_clock::now();
-    elapsed_seconds = end - start;
+    elapsed_sec = tt.getTimeUs() / 1000000.0;
 
-    printf("iteration %.4f (%.1f ops/sec)\n",
-           elapsed_seconds.count(), n/elapsed_seconds.count());
+    sprintf(msg, "iteration %.4f (%.1f ops/sec)\n",
+            elapsed_sec, n/elapsed_sec);
+    TestSuite::appendResultMessage(msg);
 
     skiplist_free(&list);
+
+    return 0;
 }
 
-void concurrent_write_erase_test(struct test_args t_args)
+int concurrent_write_erase_test(struct test_args t_args)
 {
+    char msg[1024];
+    TestSuite::appendResultMessage("\n");
+
     skiplist_raw list;
     std::mutex lock;
     std::set<int> stl_set;
@@ -488,7 +490,6 @@ void concurrent_write_erase_test(struct test_args t_args)
         arr_del[i].value = key_del[i];
         skiplist_insert(&list, &arr_del[i].snode);
     }
-    printf("initial load done\n");
 
     // assign keys to add
     for (i=0; i<n; ++i) {
@@ -527,7 +528,7 @@ void concurrent_write_erase_test(struct test_args t_args)
     int n_keys_per_thread_add = n / n_threads_add;
     int n_keys_per_thread_del = n / n_threads_del;
 
-    std::vector<std::thread> t_hdl_add(n_threads_add);
+    std::vector<TestSuite::ThreadHolder*> t_holder_add(n_threads_add);
     std::vector<thread_args> args_add(n_threads_add);
 
     for (i=0; i<n_threads_add; ++i) {
@@ -540,10 +541,11 @@ void concurrent_write_erase_test(struct test_args t_args)
         args_add[i].range_end = (i+1)*n_keys_per_thread_add - 1;
         args_add[i].use_skiplist = t_args.use_skiplist;
 
-        t_hdl_add[i] = std::thread(writer_thread, &args_add[i]);
+        t_holder_add[i] = new TestSuite::ThreadHolder
+                              (&args_add[i], writer_thread, nullptr);
     }
 
-    std::vector<std::thread> t_hdl_del(n_threads_del);
+    std::vector<TestSuite::ThreadHolder*> t_holder_del(n_threads_del);
     std::vector<thread_args> args_del(n_threads_del);
 
     for (i=0; i<n_threads_del; ++i) {
@@ -556,49 +558,51 @@ void concurrent_write_erase_test(struct test_args t_args)
         args_del[i].range_end = (i+1)*n_keys_per_thread_del - 1;
         args_del[i].use_skiplist = t_args.use_skiplist;
 
-        t_hdl_del[i] = std::thread(eraser_thread, &args_del[i]);
+        t_holder_del[i] = new TestSuite::ThreadHolder
+                              (&args_del[i], eraser_thread, nullptr);
     }
 
 
     for (i=0; i<n_threads_add; ++i){
-        t_hdl_add[i].join();
+        t_holder_add[i]->join();
+        delete t_holder_add[i];
     }
     for (i=0; i<n_threads_del; ++i){
-        t_hdl_del[i].join();
+        t_holder_del[i]->join();
+        delete t_holder_del[i];
     }
 
     double max_seconds_add = 0;
     double max_seconds_del = 0;
 
     for (i=0; i<n_threads_add; ++i) {
-        if (args_add[i].elapsed_seconds.count() > max_seconds_add) {
-            max_seconds_add = args_add[i].elapsed_seconds.count();
+        if (args_add[i].elapsed_sec > max_seconds_add) {
+            max_seconds_add = args_add[i].elapsed_sec;
         }
     }
 
     for (i=0; i<n_threads_del; ++i) {
-        if (args_del[i].elapsed_seconds.count() > max_seconds_del) {
-            max_seconds_del = args_del[i].elapsed_seconds.count();
+        if (args_del[i].elapsed_sec > max_seconds_del) {
+            max_seconds_del = args_del[i].elapsed_sec;
         }
     }
 
-    printf("insertion %.4f (%d threads, %.1f ops/sec)\n",
-           max_seconds_add,
-           n_threads_add,
-           n / max_seconds_add);
+    sprintf(msg, "insertion %.4f (%d threads, %.1f ops/sec)\n",
+            max_seconds_add, n_threads_add, n / max_seconds_add);
+    TestSuite::appendResultMessage(msg);
 
-    printf("deletion %.4f (%d threads, %.1f ops/sec)\n",
-           max_seconds_del,
-           n_threads_del,
-           n / max_seconds_del);
+    sprintf(msg, "deletion %.4f (%d threads, %.1f ops/sec)\n",
+            max_seconds_del, n_threads_del, n / max_seconds_del);
+    TestSuite::appendResultMessage(msg);
 
-    printf("mutation total %.4f (%d threads, %.1f ops/sec)\n",
-           std::max(max_seconds_add, max_seconds_del),
-           n_threads_add + n_threads_del,
-           (n*2) / std::max(max_seconds_add, max_seconds_del));
+    sprintf(msg, "mutation total %.4f (%d threads, %.1f ops/sec)\n",
+            std::max(max_seconds_add, max_seconds_del),
+            n_threads_add + n_threads_del,
+            (n*2) / std::max(max_seconds_add, max_seconds_del));
+    TestSuite::appendResultMessage(msg);
 
     if (!t_args.use_skiplist) {
-        return;
+        return 0;
     }
 
     // integrity check (forward iteration, skiplist only)
@@ -620,34 +624,43 @@ void concurrent_write_erase_test(struct test_args t_args)
         int idx = count * 10 + 5;
         if (node->value != idx) {
             skiplist_node *missing = &arr_add_dbgref[count]->snode;
-            printf("count %d, idx %d is missing %lx\n", count, idx, (uint64_t)missing);
+            sprintf(msg, "count %d, idx %d is missing %lx\n",
+                    count, idx, (uint64_t)missing);
+            TestSuite::appendResultMessage(msg);
 
             skiplist_node *prev = skiplist_prev(&list, missing);
             skiplist_node *next = skiplist_next(&list, missing);
             IntNode *prev_node = _get_entry(prev, IntNode, snode);
             IntNode *next_node = _get_entry(next, IntNode, snode);
-            printf("%d %d\n", prev_node->value, next_node->value);
+            sprintf(msg, "%d %d\n", prev_node->value, next_node->value);
+            TestSuite::appendResultMessage(msg);
 
             corruption = true;
         }
-        assert(node->value == idx);
+        CHK_EQ(idx, node->value);
         cur = skiplist_next(&list, cur);
         count++;
     }
-    assert(count == n);
-    assert(!corruption);
+    CHK_EQ(n, count);
+    CHK_NOT(corruption);
 
     end = std::chrono::system_clock::now();
     elapsed_seconds = end-start;
 
-    printf("iteration %.4f (%.1f ops/sec)\n",
-           elapsed_seconds.count(), n/elapsed_seconds.count());
+    sprintf(msg, "iteration %.4f (%.1f ops/sec)\n",
+            elapsed_seconds.count(), n/elapsed_seconds.count());
+    TestSuite::appendResultMessage(msg);
 
     skiplist_free(&list);
+
+    return 0;
 }
 
-void concurrent_write_read_test(struct test_args t_args)
+int concurrent_write_read_test(struct test_args t_args)
 {
+    char msg[1024];
+    TestSuite::appendResultMessage("\n");
+
     skiplist_raw list;
     std::mutex lock;
     std::set<int> stl_set;
@@ -674,7 +687,6 @@ void concurrent_write_read_test(struct test_args t_args)
         arr_find[i].value = key_read[i];
         skiplist_insert(&list, &arr_find[i].snode);
     }
-    printf("initial load done\n");
 
     // assign keys to add
     for (i=0; i<n; ++i) {
@@ -710,8 +722,8 @@ void concurrent_write_read_test(struct test_args t_args)
     int n_threads_add = t_args.n_writers;
     int n_threads_find = t_args.n_readers;
 
-    std::vector<std::thread> t_hdl_add(n_threads_add);
-    std::vector<std::thread> t_hdl_find(n_threads_find);
+    std::vector<TestSuite::ThreadHolder*> t_holder_add(n_threads_add);
+    std::vector<TestSuite::ThreadHolder*> t_holder_find(n_threads_find);
     std::vector<thread_args> args_add(n_threads_add);
     std::vector<thread_args> args_find(n_threads_find);
 
@@ -728,7 +740,8 @@ void concurrent_write_read_test(struct test_args t_args)
             args_add[i].range_end = (i+1)*n_keys_per_thread_add - 1;
             args_add[i].use_skiplist = t_args.use_skiplist;
 
-            t_hdl_add[i] = std::thread(writer_thread, &args_add[i]);
+            t_holder_add[i] = new TestSuite::ThreadHolder
+                              (&args_add[i], writer_thread, nullptr);
         }
     }
 
@@ -745,47 +758,51 @@ void concurrent_write_read_test(struct test_args t_args)
             args_find[i].range_end = (i+1)*n_keys_per_thread_find - 1;
             args_find[i].use_skiplist = t_args.use_skiplist;
 
-            t_hdl_find[i] = std::thread(reader_thread, &args_find[i]);
+            t_holder_find[i] = new TestSuite::ThreadHolder
+                               (&args_find[i], reader_thread, nullptr);
         }
     }
 
     for (i=0; i<n_threads_add; ++i){
-        t_hdl_add[i].join();
+        t_holder_add[i]->join();
+        delete t_holder_add[i];
     }
     for (i=0; i<n_threads_find; ++i){
-        t_hdl_find[i].join();
+        t_holder_find[i]->join();
+        delete t_holder_find[i];
     }
 
     if (n_threads_add) {
         double max_seconds_add = 0;
         for (i=0; i<n_threads_add; ++i) {
-            if (args_add[i].elapsed_seconds.count() > max_seconds_add) {
-                max_seconds_add = args_add[i].elapsed_seconds.count();
+            if (args_add[i].elapsed_sec > max_seconds_add) {
+                max_seconds_add = args_add[i].elapsed_sec;
             }
         }
-        printf("insertion %.4f (%d threads, %.1f ops/sec)\n",
-               max_seconds_add,
-               n_threads_add,
-               n / max_seconds_add);
+        sprintf(msg, "insertion %.4f (%d threads, %.1f ops/sec)\n",
+                max_seconds_add, n_threads_add, n / max_seconds_add);
+        TestSuite::appendResultMessage(msg);
     }
 
     if (n_threads_find) {
         double max_seconds_find = 0;
         for (i=0; i<n_threads_find; ++i) {
-            if (args_find[i].elapsed_seconds.count() > max_seconds_find) {
-                max_seconds_find = args_find[i].elapsed_seconds.count();
+            if (args_find[i].elapsed_sec > max_seconds_find) {
+                max_seconds_find = args_find[i].elapsed_sec;
             }
         }
-        printf("retrieval %.4f (%d threads, %.1f ops/sec)\n",
-               max_seconds_find,
-               n_threads_find,
-               n / max_seconds_find);
+        sprintf(msg, "retrieval %.4f (%d threads, %.1f ops/sec)\n",
+                max_seconds_find, n_threads_find, n / max_seconds_find);
+        TestSuite::appendResultMessage(msg);
     }
 
     skiplist_free(&list);
+
+    return 0;
 }
 
-int main() {
+int main(int argc, char** argv) {
+    TestSuite ts(argc, argv);
     srand(0xabcd);
 
     struct test_args args;
@@ -793,19 +810,20 @@ int main() {
     args.random_order = true;
     args.use_skiplist = true;
 
-    basic_insert_and_erase();
-    find_test();
+    //ts.options.printTestMessage = true;
+    ts.doTest("basic insert and erase", basic_insert_and_erase);
+    ts.doTest("find test", find_test);
 
     args.n_writers = 8;
-    concurrent_write_test(args);
+    ts.doTest("concurrent write test", concurrent_write_test, args);
 
     args.n_writers = 4;
     args.n_erasers = 4;
-    concurrent_write_erase_test(args);
+    ts.doTest("concurrent write erase test", concurrent_write_erase_test, args);
 
     args.n_writers = 1;
     args.n_readers = 7;
-    concurrent_write_read_test(args);
+    ts.doTest("concurrent write read test", concurrent_write_read_test, args);
 
     return 0;
 }

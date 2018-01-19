@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Skiplist
- * Version: 0.2.5
+ * Version: 0.2.6
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -29,12 +29,10 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "skiplist.h"
+
 #include <sched.h>
 #include <stdlib.h>
-
-#include <thread>
-
-#include "skiplist.h"
 
 #define __SLD_RT_INS(e, n, t, c)
 #define __SLD_NC_INS(n, nn, t, c)
@@ -78,6 +76,10 @@
         #ifndef false
             #define false 0
         #endif
+    #endif
+
+    #ifndef __cplusplus
+        #define thread_local /*_Thread_local*/
     #endif
 
     #define MOR                         __ATOMIC_RELAXED
@@ -318,7 +320,7 @@ static inline skiplist_node* _sl_next(skiplist_raw* slist,
     } _sl_read_unlock_an(cur_node);
 
     size_t num_nodes = 0;
-    thread_local skiplist_node* nodes[1024];
+    thread_local skiplist_node* nodes[256];
 
     while ( (next_node && !_sl_valid_node(next_node)) ||
              next_node == node_to_find ) {
@@ -792,7 +794,7 @@ erase_node_retry:
                 }
 
                 skiplist_node* next_node_again =
-                    _sl_next(slist, cur_node, cur_layer, node, nullptr);
+                    _sl_next(slist, cur_node, cur_layer, node, NULL);
                 ATM_FETCH_SUB(next_node_again->ref_count, 1);
                 if (next_node_again != nexts[cur_layer]) {
                     // `next` pointer has been changed, retry.
