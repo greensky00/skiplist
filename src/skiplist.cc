@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Skiplist
- * Version: 0.2.6
+ * Version: 0.2.7
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -64,8 +64,8 @@
     #define ATM_CAS(var, exp, val)      (var).compare_exchange_weak((exp), (val))
     #define ATM_FETCH_ADD(var, val)     (var).fetch_add(val, MOR)
     #define ATM_FETCH_SUB(var, val)     (var).fetch_sub(val, MOR)
-    #define ALLOC_NODE_PTR(var, count)  (var) = new atm_node_ptr[count]
-    #define FREE_NODE_PTR(var)          delete[] (var)
+    #define ALLOC_(type, var, count)    (var) = new type[count]
+    #define FREE_(var)                  delete[] (var)
 #else
     // C-style atomic operations
     #ifndef __cplusplus
@@ -90,9 +90,9 @@
             __atomic_compare_exchange(&(var), &(exp), &(val), 1, MOR, MOR)
     #define ATM_FETCH_ADD(var, val)     __atomic_fetch_add(&(var), (val), MOR)
     #define ATM_FETCH_SUB(var, val)     __atomic_fetch_sub(&(var), (val), MOR)
-    #define ALLOC_NODE_PTR(var, count)  \
-            (var) = (atm_node_ptr*)calloc(count, sizeof(atm_node_ptr))
-    #define FREE_NODE_PTR(var)          free(var)
+    #define ALLOC_(type, var, count)    \
+            (var) = (type*)calloc(count, sizeof(type))
+    #define FREE_(var)                  free(var)
 #endif
 
 static inline void _sl_node_init(skiplist_node *node,
@@ -113,10 +113,8 @@ static inline void _sl_node_init(skiplist_node *node,
 
         node->top_layer = top_layer;
 
-        if (node->next) {
-            FREE_NODE_PTR(node->next);
-        }
-        ALLOC_NODE_PTR(node->next, top_layer+1);
+        if (node->next) FREE_(node->next);
+        ALLOC_(atm_node_ptr, node->next, top_layer+1);
     }
 }
 
@@ -131,6 +129,9 @@ void skiplist_init(skiplist_raw *slist,
     slist->fanout = 4;
     slist->max_layer = 12;
     slist->num_entries = 0;
+
+    ALLOC_(atm_uint32_t, slist->layer_entries, slist->max_layer);
+    slist->top_layer = 0;
 
     skiplist_init_node(&slist->head);
     skiplist_init_node(&slist->tail);
@@ -154,6 +155,12 @@ void skiplist_free(skiplist_raw *slist)
 {
     skiplist_free_node(&slist->head);
     skiplist_free_node(&slist->tail);
+
+    FREE_(slist->layer_entries);
+    slist->layer_entries = NULL;
+
+    slist->aux = NULL;
+    slist->cmp_func = NULL;
 }
 
 void skiplist_init_node(skiplist_node *node)
@@ -172,7 +179,8 @@ void skiplist_init_node(skiplist_node *node)
 
 void skiplist_free_node(skiplist_node *node)
 {
-    FREE_NODE_PTR(node->next);
+    FREE_(node->next);
+    node->next = NULL;
 }
 
 size_t skiplist_get_size(skiplist_raw* slist) {
@@ -203,7 +211,11 @@ void skiplist_set_config(skiplist_raw *slist,
                          skiplist_raw_config config)
 {
     slist->fanout = config.fanout;
+
     slist->max_layer = config.maxLayer;
+    if (slist->layer_entries) FREE_(slist->layer_entries);
+    ALLOC_(atm_uint32_t, slist->layer_entries, slist->max_layer);
+
     slist->aux = config.aux;
 }
 
@@ -421,7 +433,9 @@ insert_retry:
     __SLD_(size_t nh = 0);
     __SLD_(thread_local skiplist_node* history[1024]; (void)history);
 
-    for (cur_layer = slist->max_layer-1; cur_layer >= 0; --cur_layer) {
+    int sl_top_layer = slist->top_layer;
+    if (top_layer > sl_top_layer) sl_top_layer = top_layer;
+    for (cur_layer = sl_top_layer; cur_layer >= 0; --cur_layer) {
         do {
             __SLD_( history[nh++] = cur_node );
 
@@ -541,10 +555,18 @@ insert_retry:
 
             __SLD_P("%02x ins %p done\n", (int)tid_hash, node);
 
+            ATM_FETCH_ADD(slist->num_entries, 1);
+            ATM_FETCH_ADD(slist->layer_entries[node->top_layer], 1);
+            for (int ii=slist->max_layer-1; ii>=0; --ii) {
+                if (slist->layer_entries[ii] > 0) {
+                    slist->top_layer = ii;
+                    break;
+                }
+            }
+
             // modification is done for all layers
             _sl_clr_flags(prevs, 0, top_layer);
             ATM_FETCH_SUB(cur_node->ref_count, 1);
-            ATM_FETCH_ADD(slist->num_entries, 1);
 
             return 0;
         } while (cur_node != &slist->tail);
@@ -593,7 +615,8 @@ find_retry:
     __SLD_(size_t nh = 0);
     __SLD_(thread_local skiplist_node* history[1024]; (void)history);
 
-    for (cur_layer = slist->max_layer-1; cur_layer >= 0; --cur_layer) {
+    uint8_t sl_top_layer = slist->top_layer;
+    for (cur_layer = sl_top_layer; cur_layer >= 0; --cur_layer) {
         do {
             __SLD_(history[nh++] = cur_node);
 
@@ -708,7 +731,6 @@ erase_node_retry:
     }
 
     int cmp = 0;
-    int cur_layer = slist->max_layer - 1;
     bool found_node_to_erase = false;
     (void)found_node_to_erase;
     skiplist_node *cur_node = &slist->head;
@@ -717,6 +739,7 @@ erase_node_retry:
     __SLD_(size_t nh = 0);
     __SLD_(thread_local skiplist_node* history[1024]; (void)history);
 
+    int cur_layer = slist->top_layer;
     for (; cur_layer >= 0; --cur_layer) {
         do {
             __SLD_( history[nh++] = cur_node );
@@ -840,12 +863,20 @@ erase_node_retry:
 
     __SLD_P("%02x rmv %p done\n", (int)tid_hash, node);
 
+    ATM_FETCH_SUB(slist->num_entries, 1);
+    ATM_FETCH_SUB(slist->layer_entries[node->top_layer], 1);
+    for (int ii=slist->max_layer-1; ii>=0; --ii) {
+        if (slist->layer_entries[ii] > 0) {
+            slist->top_layer = ii;
+            break;
+        }
+    }
+
     // modification is done for all layers
     _sl_clr_flags(prevs, 0, top_layer);
     ATM_FETCH_SUB(cur_node->ref_count, 1);
 
     ATM_STORE(node->being_modified, bool_false);
-    ATM_FETCH_SUB(slist->num_entries, 1);
 
     return 0;
 }
