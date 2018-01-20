@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Test Suite
- * Version: 0.1.30
+ * Version: 0.1.31
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -258,25 +258,14 @@ public:
         testFunction = func;
         testInstance = test_instance;
     }
-
     void testAll() { testAllInternal(0); }
-
-    virtual void setParam(size_t param_no, size_t param_idx) {
-        (void)param_no;
-        (void)param_idx;
-    }
-
-    virtual size_t getNumSteps(size_t param_no) {
-        (void)param_no;
-        return 0;
-    }
-
-    virtual size_t getNumParams() { return 0; }
-    virtual std::string toString() { return ""; }
+    virtual void setParam(size_t param_no, size_t param_idx) = 0;
+    virtual size_t getNumSteps(size_t param_no) = 0;
+    virtual size_t getNumParams() = 0;
+    virtual std::string toString() = 0;
 
 private:
     inline void testAllInternal(size_t depth);
-
     std::string testName;
     test_func_args testFunction;
     TestSuite* testInstance;
@@ -285,10 +274,9 @@ private:
 class TestArgsWrapper {
 public:
     TestArgsWrapper(TestArgsBase* _test_args) : test_args(_test_args) {}
-    ~TestArgsWrapper() {
-        delete test_args;
-    }
+    ~TestArgsWrapper() { delete test_args; }
     TestArgsBase* getArgs() const { return test_args; }
+    operator TestArgsBase*() const { return getArgs(); }
 private:
     TestArgsBase* test_args;
 };
@@ -373,6 +361,7 @@ struct TestOptions {
 };
 
 class TestSuite {
+    friend TestArgsBase;
 public:
     static std::string& getResMsg() {
         static std::string res_msg;
@@ -613,35 +602,107 @@ public:
 
     // === doTest things ====================================
 
-    inline void doTest(std::string test_name,
-                       test_func func);
+    // 1) Without parameter.
+    void doTest( const std::string& test_name,
+                 test_func func )
+    {
+        if (!matchFilter(test_name)) return;
 
-    inline void doTest(std::string test_name,
-                       test_func_args func,
-                       TestArgsWrapper& args_wrapper);
+        readyTest(test_name);
+        std::string& res_msg = TestSuite::getResMsg();
+        res_msg = "";
+        TestSuite*& cur_test = TestSuite::getCurTest();
+        cur_test = this;
+        int ret = func();
+        reportTestResult(test_name, ret);
+    }
 
+    // 2) Ranged parameter.
     template<typename T, typename F>
-    inline void doTest(std::string test_name,
-                       F func,
-                       TestRange<T> range);
+    void doTest( std::string test_name,
+                 F func,
+                 TestRange<T> range )
+    {
+        if (!matchFilter(test_name)) return;
 
-    template<typename... T, typename F>
-    inline void doTest(std::string test_name,
-                       F func,
-                       T... args);
+        size_t n = (useGivenRange) ? 1 : range.getSteps();
+        size_t i;
 
-    inline void doTestCB(std::string test_name,
-                         test_func_args func,
-                         TestArgsBase* args);
+        for (i=0; i<n; ++i) {
+            std::string actual_test_name = test_name;
+            std::stringstream ss;
+
+
+            T cur_arg = (useGivenRange)
+                        ? givenRange
+                        : range.getEntry(i);
+
+            ss << cur_arg;
+            actual_test_name += " (" + ss.str() + ")";
+            readyTest(actual_test_name);
+
+            std::string& res_msg = TestSuite::getResMsg();
+            res_msg = "";
+            TestSuite*& cur_test = TestSuite::getCurTest();
+            cur_test = this;
+
+            int ret = func(cur_arg);
+            reportTestResult(actual_test_name, ret);
+        }
+    }
+
+    // 3) Generic one-time parameters.
+    template<typename T1, typename... T2, typename F>
+    void doTest( const std::string& test_name,
+                 F func,
+                 T1 arg1,
+                 T2... args )
+    {
+        if (!matchFilter(test_name)) return;
+
+        readyTest(test_name);
+        std::string& res_msg = TestSuite::getResMsg();
+        res_msg = "";
+        TestSuite*& cur_test = TestSuite::getCurTest();
+        cur_test = this;
+        int ret = func(arg1, args...);
+        reportTestResult(test_name, ret);
+    }
+
+    // 4) Multi composite parameters.
+    template<typename F>
+    void doTest( const std::string& test_name,
+                 F func,
+                 TestArgsWrapper& args_wrapper )
+    {
+        if (!matchFilter(test_name)) return;
+
+        TestArgsBase* args = args_wrapper.getArgs();
+        args->setCallback(test_name, func, this);
+        args->testAll();
+    }
 
     TestOptions options;
 
 private:
+    void doTestCB( const std::string& test_name,
+                   test_func_args func,
+                   TestArgsBase* args )
+    {
+        readyTest(test_name);
+        std::string& res_msg = TestSuite::getResMsg();
+        res_msg = "";
+        TestSuite*& cur_test = TestSuite::getCurTest();
+        cur_test = this;
+        int ret = func(args);
+        reportTestResult(test_name, ret);
+    }
+
     static void spawnThread(ThreadInternalArgs* args) {
         args->rc = args->func(args->userArgs);
     }
 
-    bool matchFilter(std::string test_name) {
+    bool matchFilter(const std::string& test_name) {
         if (!filter.empty() &&
             test_name.find(filter) == std::string::npos) {
             // Doesn't match with the given filter.
@@ -650,7 +711,7 @@ private:
         return true;
     }
 
-    void readyTest(std::string& test_name) {
+    void readyTest(const std::string& test_name) {
         printf("[ " "...." " ] %s\n", test_name.c_str());
         if (options.printTestMessage) {
             printf(_CL_D_GRAY("   === TEST MESSAGE (BEGIN) ===\n"));
@@ -660,7 +721,7 @@ private:
         startTimeLocal = std::chrono::system_clock::now();
     }
 
-    void reportTestResult(std::string& test_name,
+    void reportTestResult(const std::string& test_name,
                           int result) {
         std::chrono::time_point<std::chrono::system_clock> cur_time =
                 std::chrono::system_clock::now();;
@@ -826,96 +887,6 @@ void TestArgsBase::testAllInternal(size_t depth) {
         }
     }
 }
-
-
-
-// ===== TestSuite =====
-
-void TestSuite::doTest(std::string test_name,
-                       test_func func)
-{
-    if (!matchFilter(test_name)) return;
-
-    readyTest(test_name);
-    std::string& res_msg = TestSuite::getResMsg();
-    res_msg = "";
-    TestSuite*& cur_test = TestSuite::getCurTest();
-    cur_test = this;
-    int ret = func();
-    reportTestResult(test_name, ret);
-}
-
-void TestSuite::doTest(std::string test_name,
-                       test_func_args func,
-                       TestArgsWrapper& args_wrapper) {
-    if (!matchFilter(test_name)) return;
-
-    TestArgsBase* args = args_wrapper.getArgs();
-    args->setCallback(test_name, func, this);
-    args->testAll();
-}
-
-void TestSuite::doTestCB(std::string test_name,
-                         test_func_args func,
-                         TestArgsBase* args) {
-    readyTest(test_name);
-    std::string& res_msg = TestSuite::getResMsg();
-    res_msg = "";
-    TestSuite*& cur_test = TestSuite::getCurTest();
-    cur_test = this;
-    int ret = func(args);
-    reportTestResult(test_name, ret);
-}
-
-template<typename T, typename F>
-void TestSuite::doTest(std::string test_name,
-                       F func,
-                       TestRange<T> range) {
-    if (!matchFilter(test_name)) return;
-
-    size_t n = (useGivenRange) ? 1 : range.getSteps();
-    size_t i;
-
-    for (i=0; i<n; ++i) {
-        std::string actual_test_name = test_name;
-        std::stringstream ss;
-
-
-        T cur_arg = (useGivenRange)
-                    ? givenRange
-                    : range.getEntry(i);
-
-        ss << cur_arg;
-        actual_test_name += " (" + ss.str() + ")";
-        readyTest(actual_test_name);
-
-        std::string& res_msg = TestSuite::getResMsg();
-        res_msg = "";
-        TestSuite*& cur_test = TestSuite::getCurTest();
-        cur_test = this;
-
-        int ret = func(cur_arg);
-        reportTestResult(actual_test_name, ret);
-    }
-}
-
-template<typename... T, typename F>
-void TestSuite::doTest(std::string test_name,
-                       F func,
-                       T... args)
-{
-    if (!matchFilter(test_name)) return;
-
-    readyTest(test_name);
-    std::string& res_msg = TestSuite::getResMsg();
-    res_msg = "";
-    TestSuite*& cur_test = TestSuite::getCurTest();
-    cur_test = this;
-    int ret = func(args...);
-    reportTestResult(test_name, ret);
-}
-
-
 
 // ===== Parameter macros =====
 
