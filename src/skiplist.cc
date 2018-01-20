@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Skiplist
- * Version: 0.2.7
+ * Version: 0.2.8
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -31,7 +31,6 @@
 
 #include "skiplist.h"
 
-#include <sched.h>
 #include <stdlib.h>
 
 #define __SLD_RT_INS(e, n, t, c)
@@ -45,12 +44,21 @@
 
 //#define __SL_DEBUG (1)
 #ifdef __SL_DEBUG
+    #ifndef __cplusplus
+        #error "Debug mode is available with C++ compiler only."
+    #endif
     #include "skiplist_debug.h"
 #endif
 
 #define __SL_YIELD (1)
 #ifdef __SL_YIELD
-    #define YIELD() sched_yield()
+    #ifdef __cplusplus
+        #include <thread>
+        #define YIELD() std::this_thread::yield()
+    #else
+        #include <sched.h>
+        #define YIELD() sched_yield()
+    #endif
 #else
     #define YIELD()
 #endif
@@ -241,7 +249,7 @@ static inline void _sl_read_lock_an(skiplist_node* node) {
         uint32_t accessing_next = 0;
         ATM_LOAD(node->accessing_next, accessing_next);
         while (accessing_next & 0xfff00000) {
-            sched_yield();
+            YIELD();
             ATM_LOAD(node->accessing_next, accessing_next);
         }
 
@@ -265,7 +273,7 @@ static inline void _sl_write_lock_an(skiplist_node* node) {
         uint32_t accessing_next = 0;
         ATM_LOAD(node->accessing_next, accessing_next);
         while (accessing_next & 0xfff00000) {
-            sched_yield();
+            YIELD();
             ATM_LOAD(node->accessing_next, accessing_next);
         }
 
@@ -274,7 +282,7 @@ static inline void _sl_write_lock_an(skiplist_node* node) {
         if((accessing_next & 0xfff00000) == 0x100000) {
             // Wait until there's no more readers
             while (accessing_next & 0x000fffff) {
-                sched_yield();
+                YIELD();
                 ATM_LOAD(node->accessing_next, accessing_next);
             }
             return;
@@ -607,6 +615,7 @@ static inline skiplist_node* _sl_find(skiplist_raw *slist,
     //  GTEQ  1: greater or equal
     //  GT    2: greater
 find_retry:
+    (void)mode;
     int cmp = 0;
     int cur_layer = 0;
     skiplist_node *cur_node = &slist->head;
@@ -929,8 +938,9 @@ int skiplist_is_safe_to_free(skiplist_node* node) {
 }
 
 void skiplist_wait_for_free(skiplist_node* node) {
-    while (!skiplist_is_safe_to_free(node))
-        sched_yield();
+    while (!skiplist_is_safe_to_free(node)) {
+        YIELD();
+    }
 }
 
 void skiplist_grab_node(skiplist_node* node) {
@@ -972,22 +982,16 @@ skiplist_node* skiplist_next(skiplist_raw *slist,
     // to find valid link (same as in prev()).
 
     skiplist_node *next = _sl_next(slist, node, 0, NULL, NULL);
-    if (!next) {
-        next = _sl_find(slist, node, GT);
-    }
+    if (!next) next = _sl_find(slist, node, GT);
 
-    if (next == &slist->tail) {
-        return NULL;
-    }
+    if (next == &slist->tail) return NULL;
     return next;
 }
 
 skiplist_node* skiplist_prev(skiplist_raw *slist,
                              skiplist_node *node) {
     skiplist_node *prev = _sl_find(slist, node, SM);
-    if (prev == &slist->head) {
-        return NULL;
-    }
+    if (prev == &slist->head) return NULL;
     return prev;
 }
 
@@ -996,9 +1000,7 @@ skiplist_node* skiplist_begin(skiplist_raw *slist) {
     while (!next) {
         next = _sl_next(slist, &slist->head, 0, NULL, NULL);
     }
-    if (next == &slist->tail) {
-        return NULL;
-    }
+    if (next == &slist->tail) return NULL;
     return next;
 }
 
