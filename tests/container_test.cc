@@ -14,8 +14,20 @@ int map_basic() {
     sl_map<int, int> sl;
 
     for (int i=0; i<10; ++i) {
-        sl.insert( std::make_pair(i, i*10) );
+        auto itr = sl.insert( std::make_pair(i, i*10) );
+        CHK_TRUE(itr.second);
+        CHK_EQ(i, itr.first->first);
+        CHK_EQ(i*10, itr.first->second);
     }
+
+    // Duplicate insert should not be allowed.
+    for (int i=0; i<10; ++i) {
+        auto itr = sl.insert( std::make_pair(i, i*20) );
+        CHK_FALSE(itr.second);
+        CHK_EQ(i, itr.first->first);
+        CHK_EQ(i*10, itr.first->second);
+    }
+
     for (int i=0; i<10; ++i) {
         auto entry = sl.find(i);
         if (entry != sl.end()) {
@@ -60,8 +72,18 @@ int set_basic() {
     sl_set<int> sl;
 
     for (int i=0; i<10; ++i) {
-        sl.insert(i);
+        auto itr = sl.insert(i);
+        CHK_TRUE(itr.second);
+        CHK_EQ(i, *itr.first);
     }
+
+    // Duplicate insert should not be allowed.
+    for (int i=0; i<10; ++i) {
+        auto itr = sl.insert(i);
+        CHK_FALSE(itr.second);
+        CHK_EQ(i, *itr.first);
+    }
+
     for (int i=0; i<10; ++i) {
         auto entry = sl.find(i);
         if (entry != sl.end()) {

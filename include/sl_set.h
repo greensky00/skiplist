@@ -42,6 +42,15 @@ public:
         friend class sl_set;
     public:
         iterator() : slist(nullptr), cursor(nullptr) {}
+
+        iterator(iterator&& src)
+            : slist(src.slist), cursor(src.cursor)
+        {
+            // Mimic perfect forwarding.
+            src.slist = nullptr;
+            src.cursor = nullptr;
+        }
+
         ~iterator() {
             if (cursor) skiplist_release_node(cursor);
         }
@@ -131,13 +140,32 @@ public:
 
     size_t size() { return skiplist_get_size(&slist); }
 
-    void insert(K key) {
+    std::pair<iterator, bool> insert(const K& key) {
         Node* node = new Node();
         node->key = key;
-        skiplist_insert(&slist, &node->snode);
+        do {
+            int rc = skiplist_insert_nodup(&slist, &node->snode);
+            if (rc == 0) {
+                skiplist_grab_node(&node->snode);
+                return std::pair<iterator, bool>
+                       ( iterator(&slist, &node->snode), true );
+            }
+            delete node;
+
+            Node query;
+            query.key = key;
+            skiplist_node* cursor = skiplist_find(&slist, &query.snode);
+            if (cursor) {
+                return std::pair<iterator, bool>
+                       ( iterator(&slist, cursor), false );
+            }
+        } while (true);
+
+        // NOTE: Should not reach here.
+        return std::pair<iterator, bool>(iterator(), false);
     }
 
-    iterator find(K key) {
+    iterator find(const K& key) {
         Node query;
         query.key = key;
         skiplist_node* cursor = skiplist_find(&slist, &query.snode);
