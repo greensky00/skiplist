@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Skiplist
- * Version: 0.2.8
+ * Version: 0.2.9
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation

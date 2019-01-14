@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Skiplist
- * Version: 0.2.8
+ * Version: 0.2.9
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -340,7 +340,7 @@ static inline skiplist_node* _sl_next(skiplist_raw* slist,
     } _sl_read_unlock_an(cur_node);
 
     size_t num_nodes = 0;
-    thread_local skiplist_node* nodes[256];
+    skiplist_node* nodes[256];
 
     while ( (next_node && !_sl_valid_node(next_node)) ||
              next_node == node_to_find ) {
@@ -425,8 +425,8 @@ static inline int _skiplist_insert(skiplist_raw *slist,
     _sl_node_init(node, top_layer);
     _sl_write_lock_an(node);
 
-    thread_local skiplist_node* prevs[SKIPLIST_MAX_LAYER];
-    thread_local skiplist_node* nexts[SKIPLIST_MAX_LAYER];
+    skiplist_node* prevs[SKIPLIST_MAX_LAYER];
+    skiplist_node* nexts[SKIPLIST_MAX_LAYER];
 
     __SLD_P("%02x ins %p begin\n", (int)tid_hash, node);
 
@@ -715,8 +715,8 @@ int skiplist_erase_node_passive(skiplist_raw *slist,
         return -1;
     }
 
-    thread_local skiplist_node* prevs[SKIPLIST_MAX_LAYER];
-    thread_local skiplist_node* nexts[SKIPLIST_MAX_LAYER];
+    skiplist_node* prevs[SKIPLIST_MAX_LAYER];
+    skiplist_node* nexts[SKIPLIST_MAX_LAYER];
 
     bool expected = false;
     if (!ATM_CAS(node->being_modified, expected, bool_true)) {
