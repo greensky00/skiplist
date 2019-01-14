@@ -1,12 +1,13 @@
-#include <stdio.h>
-#include <unistd.h>
+#include "skiplist.h"
+
+#include "test_common.h"
 
 #include <chrono>
 #include <thread>
 #include <vector>
 
-#include "skiplist.h"
-#include "test_common.h"
+#include <stdio.h>
+#include <unistd.h>
 
 struct TestNode {
     TestNode() : value(0) {

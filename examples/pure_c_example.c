@@ -1,7 +1,7 @@
+#include "skiplist.h"
+
 #include <stdio.h>
 #include <stdlib.h>
-
-#include "skiplist.h"
 
 // Define a node that contains key and value pair.
 struct my_node {

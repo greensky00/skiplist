@@ -1,12 +1,13 @@
-#include <stdio.h>
+#include "sl_map.h"
+
+#include "test_common.h"
 
 #include <map>
 #include <mutex>
 #include <thread>
 #include <vector>
 
-#include "sl_map.h"
-#include "test_common.h"
+#include <stdio.h>
 
 struct thread_args {
     thread_args() : mode(SKIPLIST), num(0), id(0), modulo(0),
@@ -117,7 +118,7 @@ void writer(thread_args* args) {
 }
 
 int concurrent_test(int mode) {
-    sl_map<int, int> sl;
+    sl_map_gc<int, int> sl;
     std::map<int, int> stdmap;
     std::mutex lock;
     int num = 10000000;
@@ -173,7 +174,7 @@ int concurrent_test(int mode) {
 int main(int argc, char** argv) {
     TestSuite tt(argc, argv);
 
-    std::vector<int> params = {0, 1, 2};
+    std::vector<int> params = {0, 1/*, 2*/};
     tt.options.printTestMessage = true;
     tt.doTest("concurrent access comparison test", concurrent_test, TestRange<int>(params));
 

@@ -6,6 +6,7 @@ CFLAGS = \
 
 CFLAGS += -Wall
 CFLAGS += -O3
+#CFLAGS += -fsanitize=address -fuse-ld=gold
 
 CXXFLAGS = $(CFLAGS) \
 	--std=c++11 \
