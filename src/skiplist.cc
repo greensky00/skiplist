@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Skiplist
- * Version: 0.2.9
+ * Version: 0.2.10
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -127,8 +127,8 @@ static inline void _sl_node_init(skiplist_node *node,
 }
 
 void skiplist_init(skiplist_raw *slist,
-                   skiplist_cmp_t *cmp_func) {
-
+                   skiplist_cmp_t *cmp_func)
+{
     slist->cmp_func = NULL;
     slist->aux = NULL;
 
@@ -153,6 +153,11 @@ void skiplist_init(skiplist_raw *slist,
         slist->tail.next[layer] = NULL;
     }
 
+    ALLOC_(atm_node_ptr, slist->last_nodes, slist->max_layer);
+    for (layer = 0; layer < slist->max_layer; ++layer) {
+        slist->last_nodes[layer] = &slist->head;
+    }
+
     bool bool_val = true;
     ATM_STORE(slist->head.is_fully_linked, bool_val);
     ATM_STORE(slist->tail.is_fully_linked, bool_val);
@@ -166,6 +171,9 @@ void skiplist_free(skiplist_raw *slist)
 
     FREE_(slist->layer_entries);
     slist->layer_entries = NULL;
+
+    FREE_(slist->last_nodes);
+    slist->last_nodes = NULL;
 
     slist->aux = NULL;
     slist->cmp_func = NULL;
@@ -223,6 +231,13 @@ void skiplist_set_config(skiplist_raw *slist,
     slist->max_layer = config.maxLayer;
     if (slist->layer_entries) FREE_(slist->layer_entries);
     ALLOC_(atm_uint32_t, slist->layer_entries, slist->max_layer);
+
+    if (slist->last_nodes) FREE_(slist->last_nodes);
+    ALLOC_(atm_node_ptr, slist->last_nodes, slist->max_layer);
+    size_t layer;
+    for (layer = 0; layer < slist->max_layer; ++layer) {
+        slist->last_nodes[layer] = &slist->head;
+    }
 
     slist->aux = config.aux;
 }
@@ -553,6 +568,24 @@ insert_retry:
                         (int)tid_hash, prevs[layer], layer,
                         node, ATM_GET(node->next[layer]) );
                 _sl_write_unlock_an(prevs[layer]);
+
+                if (nexts[layer] == &slist->tail) {
+                    // prevs[layer] was the last node, we should update it.
+                    skiplist_node* prev_last = prevs[layer];
+                    if ( !ATM_CAS( slist->last_nodes[layer],
+                                   prev_last,
+                                   node ) ) {
+                        __SLD_P("%02x update last %p[%d] -> %p\n",
+                                (int)tid_hash, prevs[layer], layer, node);
+                    } else {
+                        // Last node has been changed in the meantime,
+                        // we can safely skip this.
+                        __SLD_P("%02x update last failed %p[%d] -> %p, "
+                                "tried %p\n",
+                                (int)tid_hash, prevs[layer], layer,
+                                ATM_GET(slist->last_nodes[layer]), node);
+                    }
+                }
             }
 
             // now this node is fully linked
@@ -868,6 +901,27 @@ erase_node_retry:
                 (int)tid_hash, prevs[cur_layer], cur_layer,
                 nexts[cur_layer], node);
         _sl_write_unlock_an(prevs[cur_layer]);
+
+        if (nexts[cur_layer] == &slist->tail) {
+            // `node` was the last node, we should update last node to `prevs`.
+            skiplist_node* prev_last = node;
+            if ( !ATM_CAS( slist->last_nodes[cur_layer],
+                           prev_last,
+                           prevs[cur_layer] ) ) {
+                __SLD_P("%02x update last %p[%d] -> %p\n",
+                        (int)tid_hash, node, cur_layer, prevs[cur_layer]);
+            } else {
+                // Last node has been changed in the meantime,
+                // we can safely skip this.
+                __SLD_P("%02x update last failed %p[%d] -> %p, "
+                        "tried %p\n",
+                        (int)tid_hash, node, cur_layer,
+                        ATM_GET(slist->last_nodes[cur_layer]),
+                        prevs[cur_layer]);
+            }
+            // NOTE: accessing `prevs` should be safe
+            //       as its `being_modified` is set.
+        }
     }
 
     __SLD_P("%02x rmv %p done\n", (int)tid_hash, node);

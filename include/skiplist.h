@@ -5,7 +5,7 @@
  * https://github.com/greensky00
  *
  * Skiplist
- * Version: 0.2.9
+ * Version: 0.2.10
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -63,7 +63,7 @@ extern "C" {
 #endif
 
 typedef struct _skiplist_node {
-    atm_node_ptr *next;
+    atm_node_ptr* next;
     atm_bool is_fully_linked;
     atm_bool being_modified;
     atm_bool removed;
@@ -86,8 +86,9 @@ typedef struct {
 typedef struct {
     skiplist_node head;
     skiplist_node tail;
-    skiplist_cmp_t *cmp_func;
-    void *aux;
+    atm_node_ptr* last_nodes;
+    skiplist_cmp_t* cmp_func;
+    void* aux;
     atm_uint32_t num_entries;
     atm_uint32_t* layer_entries;
     atm_uint8_t top_layer;
